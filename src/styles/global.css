@@ -14,7 +14,7 @@
   --muted: #9eb1c3;
   --accent: #43d9ff;
   --accent-bright: #7ae7ff;
-  --content-width: 1180px;
+  --content-width: 1600px;
 }
 
 * {
@@ -32,6 +32,7 @@ body {
   margin: 0;
   background: var(--background);
   color: var(--text);
+  font-size: 1.05rem;
 }
 
 a {
@@ -40,7 +41,39 @@ a {
 }
 
 p,
-h1 {
+h1,
+h2,
+h3 {
   margin-block: 0;
+}
+
+button,
+.button-link {
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--accent);
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover,
+button:focus-visible,
+.button-link:hover,
+.button-link:focus-visible {
+  background: var(--accent);
+  color: var(--background);
+}
+
+button:disabled {
+  border-color: var(--border);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+button:disabled:hover {
+  background: transparent;
+  color: var(--muted);
 }
 

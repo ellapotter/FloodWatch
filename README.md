@@ -2,14 +2,13 @@
 
 FloodWatch is a browser-based educational cybersecurity game designed to teach new network defenders how to recognize and respond to denial-of-service (DoS) and distributed denial-of-service (DDoS) attacks.
 
-This repository currently contains the Phase 1 website foundation and landing page. Interactive game features will be developed in later phases.
+This repository currently contains the Phase 2 starting screen, Home Screen, basic navigation, mission selection, and progress structure. The actual game missions will be developed in later phases.
 
 ## Technologies
 
 - HTML5 for semantic structure
 - CSS3 for styling and responsive layouts
 - Vanilla JavaScript using ES modules
-- SVG for scalable visual assets
 - Vite for local development and production builds
 
 ## Getting started
@@ -45,7 +44,7 @@ npm run preview
 4. Vercel should detect Vite automatically. If needed, set the build command to `npm run build` and the output directory to `dist`.
 5. Select **Deploy**.
 
-No server or environment variables are needed for the Phase 1 website.
+No server or environment variables are needed for the current website.
 
 ## Planned phases
 
@@ -62,11 +61,13 @@ FloodWatch/
 ├── public/             # Static files copied directly into the build
 ├── src/
 │   ├── assets/         # Future images and other imported assets
-│   ├── components/     # Future reusable interface components
+│   ├── components/     # Shared navigation, mission card, and progress components
 │   ├── game/
 │   │   ├── engine/     # Future shared simulation systems
 │   │   └── levels/     # Future level-specific modules
-│   ├── pages/          # Future page modules
+│   │   ├── missions.js # Shared mission definitions
+│   │   └── progress.js # Stored progress and mission availability rules
+│   ├── pages/          # Starting, Home, and placeholder page modules
 │   ├── styles/         # Global design rules and page layout styles
 │   └── main.js         # JavaScript entry point
 ├── index.html          # Main semantic HTML document
