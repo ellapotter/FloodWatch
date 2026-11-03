@@ -1,17 +1,21 @@
-import { createMissionCard } from '../components/missionCard.js';
-import { createNavigation } from '../components/navigation.js';
-import { createProgressPanel } from '../components/progressPanel.js';
-import { missions } from '../game/missions.js';
-import { getMissionStatus, loadProgress } from '../game/progress.js';
+import {
+  createMissionCardPanel,
+  createProgressPanel,
+  getMissionStatus,
+  loadProgress,
+  missions,
+} from '../panels/missionCardPanel.js';
+import { createNavigationPanel } from '../panels/navigationPanel.js';
 
 const gameSteps = [
   ['Observe', 'Watch how the network behaves.'],
-  ['Investigate', 'Examine network devices and packets to collect information.'],
+  ['Investigate', 'Examine network devices and packets to collect evidence.'],
   ['Report', 'Identify the attack using the evidence collected.'],
   ['Defend', 'Choose an appropriate mitigation strategy.'],
   ['Complete', 'Restore the network and finish the mission.'],
 ];
 
+// Builds the home page with mission cards, game steps, and saved progress.
 export function renderHomePage() {
   const page = document.createElement('div');
   const main = document.createElement('main');
@@ -23,7 +27,7 @@ export function renderHomePage() {
       <section class="panel" aria-labelledby="introduction-title">
         <h1 id="introduction-title">You are a Network Defender</h1>
         <p>
-          Your job is to monitor network traffic, identify attacks, and choose the right defenses
+          Your job is to monitor network traffic, identify attacks, and choose the right defense
           to keep the web server available. Complete the missions in order while learning how
           different denial-of-service attacks affect a network.
         </p>
@@ -47,9 +51,9 @@ export function renderHomePage() {
 
   const missionList = main.querySelector('.mission-list');
   missions.forEach((mission) => {
-    missionList.append(createMissionCard(mission, getMissionStatus(mission, progress)));
+    missionList.append(createMissionCardPanel(mission, getMissionStatus(mission, progress)));
   });
   main.querySelector('.home-sidebar').append(createProgressPanel(progress));
-  page.append(createNavigation(), main);
+  page.append(createNavigationPanel(), main);
   return page;
 }

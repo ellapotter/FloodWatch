@@ -1,0 +1,48 @@
+.glossary-term {
+  display: inline;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 0.1em;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+}
+
+.glossary-term:hover,
+.glossary-term:focus-visible {
+  background: transparent;
+  color: var(--accent-bright);
+}
+
+.glossary-term:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 0.15rem;
+}
+
+.glossary-popup {
+  width: min(calc(100% - 2rem), 34rem);
+  max-width: none;
+  max-height: calc(100vh - 2rem);
+  margin: auto;
+  overflow-y: auto;
+  background: var(--background);
+  color: var(--text);
+}
+
+.glossary-popup::backdrop {
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.glossary-popup p {
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.glossary-popup button {
+  margin-top: 1.25rem;
+}

@@ -1,7 +1,6 @@
-import { createNavigation } from '../components/navigation.js';
-import { findMission, getMissionDisplayTitle } from '../game/missions.js';
-import { getMissionStatus, loadProgress } from '../game/progress.js';
+import { createNavigationPanel } from '../panels/navigationPanel.js';
 
+// Creates a basic page for locked or unfinished routes.
 function createPlaceholder(title, message) {
   const page = document.createElement('div');
   const main = document.createElement('main');
@@ -13,20 +12,11 @@ function createPlaceholder(title, message) {
       <a class="button-link" href="#home">Return to Home</a>
     </section>
   `;
-  page.append(createNavigation(), main);
+  page.append(createNavigationPanel(), main);
   return page;
 }
 
+// Builds a placeholder page with the regular site navigation.
 export function renderPlaceholderPage(title, message) {
   return createPlaceholder(title, message);
-}
-
-export function renderMissionPage(missionId) {
-  const mission = findMission(missionId);
-
-  if (!mission || getMissionStatus(mission, loadProgress()) === 'Locked') {
-    return createPlaceholder('Mission Locked', 'Complete the earlier missions before entering this mission.');
-  }
-
-  return createPlaceholder(getMissionDisplayTitle(mission), 'This mission has not been implemented yet.');
 }

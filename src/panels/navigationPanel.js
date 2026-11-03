@@ -1,4 +1,5 @@
-export function createNavigation() {
+// Creates the shared navigation bar used across the website.
+export function createNavigationPanel() {
   const navigation = document.createElement('header');
   navigation.className = 'site-header';
   navigation.innerHTML = `
