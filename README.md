@@ -2,6 +2,10 @@
 
 FloodWatch is a browser-based educational cybersecurity game for learning how denial-of-service attacks affect networks and how defenders can respond. The implemented first mission shows normal TCP communication, develops into a SYN flood, and guides the player through investigation, evidence collection, attack reporting, SYN cookie mitigation, and network recovery.
 
+## Live site
+
+[Play FloodWatch](https://flood-watch-gamma.vercel.app/#home)
+
 ## Running locally
 
 Install Node.js 20.19 or newer, then run:
