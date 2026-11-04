@@ -15,7 +15,9 @@ import {
 
 export const levelOneSimulation = Object.freeze({
   backlogCapacity: 5,
-  pendingConnectionTimeout: 36000,
+  increasedBacklogCapacity: 10,
+  blockedIndicatorDuration: 1200,
+  pendingConnectionTimeout: 10000,
   packetDuration: 4000,
   stepDelay: 750,
   clientSpawnInterval: 4500,
@@ -58,7 +60,7 @@ const levelOneDiagram = Object.freeze({
 });
 
 // Adds the selected object and current evidence state to investigation content.
-function withContext(definition, { objectId, evidenceAvailable = true, dynamicFacts = [] }) {
+function withContext(definition, { objectId, dynamicFacts = [] }) {
   return {
     objectId,
     title: definition.title,
@@ -67,7 +69,7 @@ function withContext(definition, { objectId, evidenceAvailable = true, dynamicFa
     learnMore: definition.learnMore,
     dynamicFacts,
     evidence: definition.evidence
-      ? { ...definition.evidence, objectId, available: evidenceAvailable }
+      ? { ...definition.evidence, objectId, available: true }
       : null,
   };
 }
@@ -117,10 +119,7 @@ export function getLevelOneInvestigation(selection, state) {
         ? content.client.connectedDetails
         : content.client.connectingDetails,
     };
-    return withContext(definition, {
-      objectId: client.id,
-      evidenceAvailable: client.state === 'connected',
-    });
+    return withContext(definition, { objectId: client.id });
   }
 
   if (selection.kind === 'packet') {
@@ -177,7 +176,7 @@ function createLevelOneBacklogPanel() {
 
   return {
     element: backlog.element,
-    hideDuringMitigation: true,
+    hideDuringMitigation: false,
     update: backlog.update,
   };
 }
@@ -209,6 +208,7 @@ export const levelOneMission = Object.freeze({
     { key: 'completedHandshakes', label: 'Successful connections' },
     { key: 'activeLegitimateConnections', label: 'Active connections' },
     { key: 'failedLegitimateAttempts', label: 'Failed connections' },
+    { key: 'droppedTCPPackets', label: 'Filtered TCP packets' },
   ],
   report: levelOneReport,
   mitigation: levelOneMitigations,
@@ -233,9 +233,17 @@ export const levelOneMission = Object.freeze({
         return createLevelOneNetworkSimulation(simulationOptions);
       },
       statusIndicator: {
-        label: 'SYN Cookie Protection: Active',
-        // Shows the protection label only after SYN cookies are enabled.
-        isActive: (state) => state.synCookieProtectionActive,
+        label: 'Mitigation Active',
+        isActive: (state) => Boolean(state.activeMitigationId),
+        getLabel(state) {
+          if (state.synCookieProtectionActive) {
+            return state.recoveryComplete
+              ? 'SYN Cookie Protection: Network Stabilized'
+              : 'SYN Cookie Protection: Active';
+          }
+          if (state.tcpTrafficBlocked) return 'Inbound TCP Filter: Active';
+          return 'Backlog Capacity Increased';
+        },
       },
       // Level 1 hints identify the client whose repeated handshakes look suspicious.
       shouldHintClient: (client) => client.behavior === 'suspicious',
@@ -258,8 +266,8 @@ export const levelOneMission = Object.freeze({
       selectObject: observer.selectObject,
       // Removes the observer's current selection.
       clearSelection: observer.clearSelection,
-      // Applies Level 1's correct SYN cookie defense.
-      applyMitigation: () => observer.simulation.performAction('enable-syn-cookies'),
+      // Applies the selected Level 1 defense without exposing protocol logic to the page.
+      applyMitigation: (choiceId) => observer.simulation.performAction(choiceId),
     };
   },
   createContextPanel: createLevelOneBacklogPanel,

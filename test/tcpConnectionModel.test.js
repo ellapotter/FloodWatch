@@ -70,6 +70,22 @@ test('half-open connections expire and free backlog capacity', () => {
   assert.equal(model.getState().timedOutConnections, 1);
 });
 
+test('backlog capacity changes preserve existing pending connections', () => {
+  const model = createModel();
+  model.receiveSyn({
+    connectionId: 'attack-1', originId: 'attacker', isAttacker: true, receivedAt: 0,
+  });
+  model.receiveSyn({
+    connectionId: 'attack-2', originId: 'attacker', isAttacker: true, receivedAt: 1,
+  });
+
+  assert.equal(model.setBacklogCapacity(4), true);
+  assert.equal(model.getState().backlogCapacity, 4);
+  assert.equal(model.getState().pendingHalfOpenConnections, 2);
+  assert.equal(model.setBacklogCapacity(1), true);
+  assert.equal(model.getState().pendingHalfOpenConnections, 2);
+});
+
 test('reset clears counters and pending connection state', () => {
   const model = createModel();
   model.receiveSyn({

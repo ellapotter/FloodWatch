@@ -91,7 +91,7 @@ test('client content follows its actual simulation behavior', () => {
     client: { id: 'client-session-2', state: 'connecting', behavior: 'normal' },
   });
   assert.match(connecting.details, /attempting to connect/);
-  assert.equal(connecting.evidence.available, false);
+  assert.equal(connecting.evidence.available, true);
 
   const waiting = getLevelOneInvestigation({
     kind: 'client',

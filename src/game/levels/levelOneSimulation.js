@@ -23,6 +23,13 @@ export class TcpConnectionModel {
     this.timedOutConnections = 0;
   }
 
+  // Changes the admission limit without discarding existing pending connections.
+  setBacklogCapacity(capacity) {
+    if (!Number.isInteger(capacity) || capacity < 1) return false;
+    this.backlogCapacity = capacity;
+    return true;
+  }
+
   // Processes a SYN and reserves pending state when backlog space is available.
   receiveSyn({
     connectionId,
@@ -198,10 +205,48 @@ export class LevelOneSimulation {
     };
   }
 
-  // Runs a named Level 1 action without exposing it through the shared controller.
+  // Runs a named Level 1 mitigation without exposing protocol details to shared code.
   performAction(actionName) {
-    if (actionName === 'enable-syn-cookies') return this.enableSynCookies();
-    return false;
+    return this.applyMitigation(actionName);
+  }
+
+  applyMitigation(mitigationId) {
+    const validMitigations = new Set([
+      'enable-syn-cookies',
+      'increase-tcp-backlog',
+      'block-all-tcp-traffic',
+    ]);
+    if (!validMitigations.has(mitigationId) || this.simulationPhase === 'normal-traffic') {
+      return false;
+    }
+
+    const modelState = this.connectionModel.getState();
+    this.activeMitigationId = mitigationId;
+    this.synCookieProtectionActive = mitigationId === 'enable-syn-cookies';
+    this.tcpTrafficBlocked = mitigationId === 'block-all-tcp-traffic';
+    this.recoveryComplete = false;
+    this.connectionModel.setBacklogCapacity(
+      mitigationId === 'increase-tcp-backlog'
+        ? this.configuration.increasedBacklogCapacity
+        : this.configuration.backlogCapacity,
+    );
+
+    if (this.synCookieProtectionActive) {
+      this.recoveryBaseline = {
+        attackSynPacketsReceived: this.attackSynPacketsReceived,
+        completedHandshakes: modelState.completedHandshakes,
+      };
+      this.simulationPhase = 'mitigation-active';
+      this.statusMessage = 'SYN cookie protection active. Continue watching or complete the mission.';
+    } else if (this.tcpTrafficBlocked) {
+      this.simulationPhase = 'mitigation-ineffective';
+      this.statusMessage = 'Inbound TCP traffic is blocked, including legitimate connection attempts.';
+    } else {
+      this.simulationPhase = 'mitigation-ineffective';
+      this.statusMessage = 'TCP backlog capacity increased; the SYN flood continues.';
+    }
+    this.render();
+    return true;
   }
 
   // Returns the clients that should currently appear in the network diagram.
@@ -234,6 +279,7 @@ export class LevelOneSimulation {
         connectionId: packet.connectionId ?? null,
         isAttack: packet.isAttack === true,
         usesSynCookie: packet.usesSynCookie === true,
+        willBeBlocked: this.tcpTrafficBlocked && packet.destination.id === this.server.id,
         slotIndex: packet.source.slotIndex ?? packet.destination.slotIndex,
         sourceId: packet.source.id,
         destinationId: packet.destination.id,
@@ -253,6 +299,7 @@ export class LevelOneSimulation {
   /** Returns a serializable snapshot consumed by mission components. */
   getState() {
     const visibleClients = this.getVisibleClients();
+    const connectionState = this.connectionModel.getState();
     return {
       clientCount: this.activeClients.size,
       isPlaying: this.isPlaying,
@@ -272,15 +319,20 @@ export class LevelOneSimulation {
         this.attackSynPacketsReceived >= this.configuration.repeatedSynEvidenceThreshold
         && this.missingAttackAcksObserved > 0,
       synCookieProtectionActive: this.synCookieProtectionActive,
+      activeMitigationId: this.activeMitigationId,
+      tcpTrafficBlocked: this.tcpTrafficBlocked,
+      droppedTCPPackets: this.droppedTCPPackets,
+      blockedPacketIndicatorActive: this.simulationTime < this.blockedIndicatorUntil,
+      serverAvailable: !this.tcpTrafficBlocked,
       recoveryComplete: this.recoveryComplete,
       recoveryAttackSynPackets: this.synCookieProtectionActive
         ? this.attackSynPacketsReceived - this.recoveryBaseline.attackSynPacketsReceived
         : 0,
       recoveryCompletedHandshakes: this.synCookieProtectionActive
-        ? this.connectionModel.getState().completedHandshakes
+        ? connectionState.completedHandshakes
           - this.recoveryBaseline.completedHandshakes
         : 0,
-      ...this.connectionModel.getState(),
+      ...connectionState,
     };
   }
 
@@ -443,6 +495,10 @@ export class LevelOneSimulation {
       return;
     }
     if (this.simulationPhase === 'normal-traffic') return;
+    if (this.activeMitigationId && !this.synCookieProtectionActive) {
+      this.simulationPhase = 'mitigation-ineffective';
+      return;
+    }
     const state = this.connectionModel.getState();
     if (
       state.pendingHalfOpenConnections >= state.backlogCapacity
@@ -482,35 +538,24 @@ export class LevelOneSimulation {
     }
   }
 
-  /**
-   * Enables simplified SYN cookies and records recovery baselines. New SYN requests
-   * still receive SYN-ACKs, but the model does not reserve pending state until a valid
-   * final ACK. This demonstrates the defensive principle rather than cookie encoding.
-   */
-  enableSynCookies() {
-    if (
-      this.synCookieProtectionActive
-      || this.simulationPhase === 'normal-traffic'
-    ) {
-      return false;
-    }
-
-    const state = this.connectionModel.getState();
-    this.synCookieProtectionActive = true;
-    this.recoveryComplete = false;
-    this.recoveryBaseline = {
-      attackSynPacketsReceived: this.attackSynPacketsReceived,
-      completedHandshakes: state.completedHandshakes,
-    };
-    this.simulationPhase = 'mitigation-active';
-    this.statusMessage = 'SYN cookie protection active.';
-    this.render();
-    return true;
-  }
-
   /** Applies protocol state changes only when an animated packet reaches its destination. */
   handlePacketArrival(packet) {
     const client = this.activeClients.get(packet.sessionId);
+
+    if (this.tcpTrafficBlocked && packet.destination.id === this.server.id) {
+      this.droppedTCPPackets += 1;
+      this.blockedIndicatorUntil = this.simulationTime
+        + this.configuration.blockedIndicatorDuration;
+      this.statusMessage = `${packet.type} packet blocked before reaching the web server.`;
+      if (client && !packet.isAttack) {
+        client.state = 'waiting-for-syn-ack';
+        this.schedule(this.configuration.failedClientWaitDuration, 'remove-client', {
+          sessionId: client.id,
+          replace: true,
+        });
+      }
+      return;
+    }
 
     if (packet.type === 'DATA') {
       if (!client || client.state !== 'connected' || client.compromised) return;
@@ -714,6 +759,7 @@ export class LevelOneSimulation {
     cancelAnimationFrame(this.animationFrameId);
     this.animationFrameId = null;
     this.connectionModel.reset();
+    this.connectionModel.setBacklogCapacity(this.configuration.backlogCapacity);
     this.activeClients = new Map();
     this.activePackets = new Map();
     this.events = [];
@@ -731,6 +777,10 @@ export class LevelOneSimulation {
     this.attackSynPacketsReceived = 0;
     this.missingAttackAcksObserved = 0;
     this.synCookieProtectionActive = false;
+    this.activeMitigationId = null;
+    this.tcpTrafficBlocked = false;
+    this.droppedTCPPackets = 0;
+    this.blockedIndicatorUntil = 0;
     this.recoveryComplete = false;
     this.recoveryBaseline = {
       attackSynPacketsReceived: 0,

@@ -112,7 +112,6 @@ function renderConfiguredMission(definition) {
     completionShown = true;
     missionState.setStage('completed');
     markMissionCompleted(definition.id);
-    mitigationPanel.setRecoveryState('complete');
     runtime.pause();
     missionInstructions.hidden = true;
     missionWorkspace.hidden = true;
@@ -207,14 +206,20 @@ function renderConfiguredMission(definition) {
   
   const mitigationPanel = createMitigationPanel({
     configuration: definition.mitigation,
-    // Applies the chosen defense and starts the network recovery stage.
-    onCorrect() {
-      missionState.setStage('mitigation-active');
-      if (runtime.applyMitigation()) {
+    // Applies any selected defense through the mission-specific runtime.
+    onApply(choiceId) {
+      const activated = runtime.applyMitigation(choiceId);
+      if (!activated) return false;
+      if (choiceId === definition.mitigation.correctChoiceId) {
         missionState.setStage('network-recovery');
         mitigationPanel.setRecoveryState('recovering');
+      } else {
+        missionState.setStage('mitigating');
+        mitigationPanel.setRecoveryState('inactive');
       }
+      return true;
     },
+    onComplete: showMissionCompletion,
   });
 
   const reportPanel = createReportAttackPanel({
@@ -296,7 +301,7 @@ function renderConfiguredMission(definition) {
         missionState.setStage('network-recovery');
         mitigationPanel.setRecoveryState('recovering');
       } else if (recoveryState === 'complete') {
-        showMissionCompletion();
+        mitigationPanel.setRecoveryState('complete');
       }
       refreshOpenInvestigation(state);
     },

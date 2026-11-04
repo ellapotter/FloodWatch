@@ -219,6 +219,18 @@ test('the second outbound attack SYN marks the client suspicious before either S
   );
 });
 
+test('half-open attack connections release backlog space after ten seconds', () => {
+  const { simulation, getState } = createSimulation();
+  assert.equal(levelOneSimulation.pendingConnectionTimeout, 10000);
+  simulation.play();
+  advance(simulation, 76000);
+
+  const state = getState();
+  assert.ok(state.timedOutConnections > 0);
+  assert.ok(state.pendingHalfOpenConnections <= state.backlogCapacity);
+  assert.ok(state.attackSynPacketsSent > state.pendingHalfOpenConnections);
+});
+
 test('normal traffic clients are not marked as waiting', () => {
   const { simulation, getState } = createSimulation();
   simulation.play();
@@ -519,6 +531,67 @@ test('SYN cookies preserve attack traffic while legitimate clients recover', () 
   assert.ok(mitigationPackets.some((packet) => packet.type === 'ACK'));
 });
 
+test('increasing the backlog preserves entries and provides only temporary capacity', () => {
+  const { simulation, getState } = createSimulation();
+  simulation.play();
+  advance(simulation, 80000);
+  const before = getState();
+  const sentBefore = before.attackSynPacketsSent;
+
+  assert.equal(simulation.performAction('increase-tcp-backlog'), true);
+  const increased = getState();
+  assert.equal(increased.activeMitigationId, 'increase-tcp-backlog');
+  assert.equal(increased.backlogCapacity, 10);
+  assert.equal(increased.pendingHalfOpenConnections, before.pendingHalfOpenConnections);
+  assert.equal(increased.synCookieProtectionActive, false);
+
+  for (let timestamp = 80100; timestamp <= 92000; timestamp += 100) simulation.tick(timestamp);
+  const later = getState();
+  assert.ok(later.attackSynPacketsSent > sentBefore);
+  assert.ok(later.pendingHalfOpenConnections > before.pendingHalfOpenConnections);
+  assert.ok(later.pendingHalfOpenConnections <= 10);
+  assert.equal(later.recoveryComplete, false);
+});
+
+test('blocking TCP filters inbound packets without server processing or recovery', () => {
+  const { simulation, getState } = createSimulation();
+  simulation.play();
+  advance(simulation, 80000);
+  assert.equal(simulation.performAction('block-all-tcp-traffic'), true);
+
+  for (let timestamp = 80100; timestamp <= 87000; timestamp += 100) simulation.tick(timestamp);
+  const settled = getState();
+  const receivedAfterSettling = settled.synPacketsReceived;
+  const sentAfterSettling = settled.synAckPacketsSent;
+  for (let timestamp = 87100; timestamp <= 97000; timestamp += 100) simulation.tick(timestamp);
+  const blocked = getState();
+
+  assert.equal(blocked.activeMitigationId, 'block-all-tcp-traffic');
+  assert.equal(blocked.tcpTrafficBlocked, true);
+  assert.ok(blocked.droppedTCPPackets > 0);
+  assert.equal(blocked.synPacketsReceived, receivedAfterSettling);
+  assert.equal(blocked.synAckPacketsSent, sentAfterSettling);
+  assert.equal(blocked.serverAvailable, false);
+  assert.equal(blocked.recoveryComplete, false);
+});
+
+test('switching mitigations restores normal capacity and allows SYN cookies to recover', () => {
+  const { simulation, getState } = createSimulation();
+  simulation.play();
+  advance(simulation, 80000);
+  simulation.performAction('increase-tcp-backlog');
+  for (let timestamp = 80100; timestamp <= 90000; timestamp += 100) simulation.tick(timestamp);
+  const expandedPending = getState().pendingHalfOpenConnections;
+  assert.equal(getState().backlogCapacity, 10);
+
+  assert.equal(simulation.performAction('enable-syn-cookies'), true);
+  const switched = getState();
+  assert.equal(switched.backlogCapacity, 5);
+  assert.equal(switched.pendingHalfOpenConnections, expandedPending);
+  assert.equal(switched.synCookieProtectionActive, true);
+  assert.equal(switched.tcpTrafficBlocked, false);
+});
+
 test('SYN cookies cannot be enabled before the attack begins', () => {
   const { simulation, getState } = createSimulation();
   simulation.play();
@@ -537,4 +610,8 @@ test('restart clears SYN cookie and recovery state', () => {
   simulation.reset(false);
   assert.equal(simulation.getState().synCookieProtectionActive, false);
   assert.equal(simulation.getState().recoveryComplete, false);
+  assert.equal(simulation.getState().activeMitigationId, null);
+  assert.equal(simulation.getState().tcpTrafficBlocked, false);
+  assert.equal(simulation.getState().backlogCapacity, 5);
+  assert.equal(simulation.getState().droppedTCPPackets, 0);
 });

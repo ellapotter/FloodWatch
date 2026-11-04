@@ -38,7 +38,17 @@ export function createBacklogPanel({
   const count = section.querySelector('.backlog-count strong');
   const status = section.querySelector('.backlog-status');
   status.textContent = messages.available;
-  const slots = [...section.querySelectorAll('.backlog-slots span')];
+  const slotsContainer = section.querySelector('.backlog-slots');
+  let renderedCapacity = capacity;
+
+  function renderSlots(nextCapacity) {
+    if (nextCapacity === renderedCapacity && slotsContainer.children.length === nextCapacity) return;
+    renderedCapacity = nextCapacity;
+    section.style.setProperty('--backlog-capacity', nextCapacity);
+    slotsContainer.replaceChildren(
+      ...Array.from({ length: nextCapacity }, () => document.createElement('span')),
+    );
+  }
 
   return {
     element: section,
@@ -46,8 +56,9 @@ export function createBacklogPanel({
     update(state) {
       const currentCount = getCount(state);
       const currentCapacity = getCapacity(state);
+      renderSlots(currentCapacity);
       count.textContent = `${currentCount} / ${currentCapacity}`;
-      slots.forEach((slot, index) => {
+      [...slotsContainer.children].forEach((slot, index) => {
         slot.classList.toggle('is-occupied', index < currentCount);
       });
       section.classList.toggle('is-full', currentCount >= currentCapacity);

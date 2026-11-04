@@ -27,7 +27,10 @@ export function getClientPresentation(client, showHints = false) {
 export function getPacketVisualPosition(packet, diagram) {
   const client = diagram.clients[packet.slotIndex];
   if (!client) return { x: packet.x, y: packet.y };
-  const progress = Math.min(1, Math.max(0, packet.progress ?? 0));
+  const progress = Math.min(
+    packet.willBeBlocked ? 0.88 : 1,
+    Math.max(0, packet.progress ?? 0),
+  );
   // Keep the full packet card between the device cards, not over their edges.
   const cardInset = 58;
   const clientBoundary = { x: client.x + 70 + cardInset, y: client.y };
@@ -78,6 +81,11 @@ export function createNetworkObserverPanel({
 
       <g class="connection-lines"></g>
       <g class="network-packets"></g>
+      <g class="tcp-filter" aria-hidden="true" hidden>
+        <rect x="-9" y="-48" width="18" height="96" rx="7"></rect>
+        <path d="M-4-16 4-16M-4-8 4-8M-4 0 4 0M-4 8 4 8M-4 16 4 16"></path>
+        <text y="65" text-anchor="middle">TCP Blocked</text>
+      </g>
       <g class="network-devices"></g>
     </svg>
     <div class="simulation-controls" aria-label="Simulation controls">
@@ -104,6 +112,11 @@ export function createNetworkObserverPanel({
   }
   const clientSlotElements = [];
   const packetElements = new Map();
+  const tcpFilter = section.querySelector('.tcp-filter');
+  tcpFilter.setAttribute(
+    'transform',
+    `translate(${diagram.server.x - 105} ${diagram.server.y})`,
+  );
   let showHints = hintsEnabled;
 
   // Updates the reusable client positions from the latest simulation state.
@@ -271,16 +284,30 @@ export function createNetworkObserverPanel({
     const underPressure = state.pendingHalfOpenConnections
       >= Math.ceil(state.backlogCapacity * 0.6);
     const recoveryActive = state.synCookieProtectionActive && !state.recoveryComplete;
-    serverDevice.classList.toggle('is-under-pressure', underPressure && !recoveryActive);
+    const backlogIncreased = state.activeMitigationId === 'increase-tcp-backlog';
+    const trafficBlocked = state.tcpTrafficBlocked === true;
+    serverDevice.classList.toggle(
+      'is-under-pressure',
+      (underPressure && !recoveryActive) || trafficBlocked,
+    );
     serverDevice.classList.toggle('is-recovering', recoveryActive);
-    serverDevice.classList.toggle('is-protected', state.recoveryComplete);
-    serverStatus.textContent = state.recoveryComplete
-      ? 'Protected'
-      : recoveryActive
-        ? 'Recovering'
-        : underPressure
-          ? 'Backlog pressure'
-          : 'Online';
+    serverDevice.classList.toggle(
+      'is-protected',
+      state.synCookieProtectionActive,
+    );
+    serverStatus.textContent = trafficBlocked
+      ? 'TCP Traffic Blocked'
+      : state.synCookieProtectionActive
+        ? 'SYN Cookies Active'
+        : backlogIncreased
+          ? state.pendingHalfOpenConnections >= state.backlogCapacity
+            ? 'Backlog Full'
+            : 'Backlog Increased'
+          : underPressure
+            ? 'Backlog pressure'
+            : 'Online';
+    tcpFilter.toggleAttribute('hidden', !trafficBlocked);
+    tcpFilter.classList.toggle('is-active', state.blockedPacketIndicatorActive === true);
   }
 
   const playButton = section.querySelector('[data-action="play"]');
@@ -326,12 +353,15 @@ export function createNetworkObserverPanel({
       const position = getPacketVisualPosition(packet, diagram);
       element.classList.toggle('is-server-bound', packet.direction === 'client-to-server');
       element.classList.toggle('is-client-bound', packet.direction === 'server-to-client');
+      element.classList.toggle('uses-syn-cookie', packet.usesSynCookie);
+      element.classList.toggle('will-be-blocked', packet.willBeBlocked);
       element.setAttribute('transform', `translate(${position.x} ${position.y})`);
       element.setAttribute(
         'aria-label',
         `Investigate ${packet.type} packet from ${packet.sourceLabel} to ${packet.destinationLabel}`,
       );
-      element.querySelector('.network-packet__type').textContent = packet.type;
+      element.querySelector('.network-packet__type').textContent =
+        packet.usesSynCookie ? `${packet.type} · Cookie` : packet.type;
       element.querySelector('.network-packet__route').textContent =
         `${packet.sourceLabel} → ${packet.destinationLabel}`;
       const slotElements = clientSlotElements[packet.slotIndex];
@@ -354,6 +384,10 @@ export function createNetworkObserverPanel({
       playButton.setAttribute('aria-pressed', state.isPlaying);
       pauseButton.setAttribute('aria-pressed', !state.isPlaying);
       observerStatusIndicator.hidden = !statusIndicator?.isActive(state);
+      if (!observerStatusIndicator.hidden) {
+        observerStatusIndicator.textContent = statusIndicator.getLabel?.(state)
+          ?? statusIndicator.label;
+      }
       section.querySelector('.network-diagram').classList.toggle('is-paused', !state.isPlaying);
       renderClients(state);
       renderServer(state);

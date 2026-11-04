@@ -20,7 +20,7 @@ test('the mission catalog exposes Level 1 through the shared definition interfac
   assert.equal(definition.mitigation, levelOneMitigations);
   assert.equal(typeof definition.createRuntime, 'function');
   assert.equal(typeof definition.getInvestigation, 'function');
-  assert.equal(definition.statistics.length, 4);
+  assert.equal(definition.statistics.length, 5);
 });
 
 test('mission completion and navigation are supplied by the Level 1 definition', () => {

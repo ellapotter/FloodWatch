@@ -6,7 +6,6 @@ import { renderHelpPage } from './pages/helpPage.js';
 import { renderHomePage } from './pages/homePage.js';
 import { renderMissionPage } from './pages/missionPage.js';
 import { renderSettingsPage } from './pages/settingsPage.js';
-import { renderStartPage } from './pages/startPage.js';
 
 const app = document.querySelector('#app');
 let currentPage = null;
@@ -18,9 +17,9 @@ const routes = {
   home: renderHomePage,
 };
 
-// Reads the requested page from the URL; defaults to the start page.
+// Reads the requested page from the URL; defaults to the home page.
 function getRoute() {
-  return window.location.hash.slice(1) || 'start';
+  return window.location.hash.slice(1) || 'home';
 }
 
 // Renders the requested page and runs reset, pause, or resume when needed.
@@ -55,7 +54,7 @@ function renderCurrentRoute() {
   } else if (route.startsWith('mission/')) {
     page = renderMissionPage(route.replace('mission/', ''));
   } else {
-    page = routes[route]?.() ?? renderStartPage();
+    page = routes[route]?.() ?? renderHomePage();
   }
 
   if (shouldCleanupCurrentPage) currentPage?.cleanup?.();

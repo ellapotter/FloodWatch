@@ -6,11 +6,14 @@ import { setGlossaryText } from '../glossary/glossaryText.js';
 import { decorateHeading, panelIconMappings } from '../icons/iconSystem.js';
 
 // Creates the mitigation choices and the panel that displays their results.
-export function createMitigationPanel({ configuration, onCorrect }) {
+export function createMitigationPanel({
+  configuration,
+  onApply = () => true,
+  onComplete = () => {},
+}) {
   const section = document.createElement('section');
   const statusSection = document.createElement('section');
   const mitigationState = createMitigationState(configuration);
-  let recoveryState = 'inactive';
   section.className = 'panel mitigation-panel';
   statusSection.className = 'panel mitigation-status';
 
@@ -35,11 +38,11 @@ export function createMitigationPanel({ configuration, onCorrect }) {
     statusSection.innerHTML = `
       <h2>Mitigation Result</h2>
       <p class="mitigation-feedback ${state.feedback.isCorrect ? 'feedback-correct' : ''}"></p>
-      ${state.isSuccessful && recoveryState === 'recovering' ? '<p class="recovery-state"><strong>SYN Cookie Protection: Active</strong><br>Network recovery in progress.</p>' : ''}
-      ${state.isSuccessful && recoveryState === 'complete' ? '<p class="recovery-state"><strong>Network recovery complete.</strong></p>' : ''}
+      ${state.isSuccessful ? '<button class="complete-mission" type="button">Complete Mission</button>' : ''}
     `;
     setGlossaryText(statusSection.querySelector('.mitigation-feedback'), state.feedback.message);
     decorateHeading(statusSection.querySelector('h2'), panelIconMappings.mitigation);
+    statusSection.querySelector('.complete-mission')?.addEventListener('click', onComplete);
   }
 
   // Builds the mitigation form from the mission's choices.
@@ -93,9 +96,10 @@ export function createMitigationPanel({ configuration, onCorrect }) {
     // Checks the selected defense and displays its result.
     section.querySelector('.mitigation-form').addEventListener('submit', (event) => {
       event.preventDefault();
+      const selectedChoiceId = mitigationState.getState().selectedChoiceId;
+      if (!onApply(selectedChoiceId)) return;
       const result = mitigationState.apply();
       if (!result) return;
-      if (result.isCorrect) onCorrect();
       render();
       renderStatus();
     });
@@ -109,13 +113,11 @@ export function createMitigationPanel({ configuration, onCorrect }) {
     // Restores the mitigation interface to its initial state.
     reset() {
       mitigationState.reset();
-      recoveryState = 'inactive';
       render();
       renderStatus();
     },
-    // Updates the message shown while the network recovers.
-    setRecoveryState(nextState) {
-      recoveryState = nextState;
+    // Keeps the result controls current as the simulation recovery state changes.
+    setRecoveryState() {
       renderStatus();
     },
     getState: mitigationState.getState,
