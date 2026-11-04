@@ -2,18 +2,6 @@
 
 FloodWatch is a browser-based educational cybersecurity game for learning how denial-of-service attacks affect networks and how defenders can respond. The implemented first mission shows normal TCP communication, develops into a SYN flood, and guides the player through investigation, evidence collection, attack reporting, SYN cookie mitigation, and network recovery.
 
-## Technology stack
-
-- HTML5 and accessible native controls
-- CSS3 and responsive layouts
-- Vanilla JavaScript with ES modules
-- SVG for the interactive network diagram and packet movement
-- `localStorage` for settings and mission progress
-- Vite for local development and production builds
-- Node's built-in test runner for automated tests
-
-The application has no backend. Simulation and player state run in the browser.
-
 ## Running locally
 
 Install Node.js 20.19 or newer, then run:
