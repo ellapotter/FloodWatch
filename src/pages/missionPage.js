@@ -148,6 +148,15 @@ function renderConfiguredMission(definition) {
     const resolvedRequest = definition.resolveSelection
       ? definition.resolveSelection(selectedInvestigationRequest, state)
       : selectedInvestigationRequest;
+    if (!resolvedRequest) {
+      selectedInvestigationRequest = null;
+      selectedInvestigation = null;
+      investigationPanel.clear();
+      runtime.clearSelection();
+      contextPanel?.setSelection?.(null);
+      runtimeContainer.classList.remove('is-investigating');
+      return;
+    }
     const nextInvestigation = definition.getInvestigation(resolvedRequest, state);
     if (!nextInvestigation) return;
 

@@ -3,6 +3,7 @@
  */
 import { createMitigationState } from '../game/gameEngine.js';
 import { setGlossaryText } from '../glossary/glossaryText.js';
+import { decorateHeading, panelIconMappings } from '../icons/iconSystem.js';
 
 // Creates the mitigation choices and the panel that displays their results.
 export function createMitigationPanel({ configuration, onCorrect }) {
@@ -23,6 +24,7 @@ export function createMitigationPanel({ configuration, onCorrect }) {
         <p></p>
       `;
       statusSection.querySelector('h2').textContent = configuration.identifiedAttack.name;
+      decorateHeading(statusSection.querySelector('h2'), panelIconMappings.mitigation);
       setGlossaryText(
         statusSection.querySelector('p'),
         configuration.identifiedAttack.description,
@@ -37,6 +39,7 @@ export function createMitigationPanel({ configuration, onCorrect }) {
       ${state.isSuccessful && recoveryState === 'complete' ? '<p class="recovery-state"><strong>Network recovery complete.</strong></p>' : ''}
     `;
     setGlossaryText(statusSection.querySelector('.mitigation-feedback'), state.feedback.message);
+    decorateHeading(statusSection.querySelector('h2'), panelIconMappings.mitigation);
   }
 
   // Builds the mitigation form from the mission's choices.
@@ -62,6 +65,7 @@ export function createMitigationPanel({ configuration, onCorrect }) {
     `;
 
     setGlossaryText(section.querySelector('.mitigation-instructions'), configuration.instructions);
+    decorateHeading(section.querySelector('.section-heading h2'), panelIconMappings.mitigation);
     const choices = section.querySelector('.mitigation-choices');
     configuration.choices.forEach((choice) => {
       const card = document.createElement('div');

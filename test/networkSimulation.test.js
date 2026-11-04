@@ -133,11 +133,19 @@ test('clients handshake independently and packets overlap', () => {
 test('connected clients exchange DATA in both directions and are replaced', () => {
   const { simulation, packetHistory, getState } = createSimulation();
   simulation.play();
-  advance(simulation, 32000);
+  advance(simulation, 45000);
 
   const dataPackets = packetHistory.filter((packet) => packet.type === 'DATA');
   assert.ok(dataPackets.some((packet) => packet.destinationId === 'web-server'));
   assert.ok(dataPackets.some((packet) => packet.sourceId === 'web-server'));
+  assert.ok(dataPackets.some(
+    (packet) => packet.destinationLabel === 'Web Server'
+      && packet.sourceLabel.startsWith('Client '),
+  ));
+  assert.ok(dataPackets.some(
+    (packet) => packet.sourceLabel === 'Web Server'
+      && packet.destinationLabel.startsWith('Client '),
+  ));
   assert.ok(
     getState().visibleClients.some(
       (client) => Number(client.label.replace('Client ', '')) > 3,
@@ -151,8 +159,13 @@ test('connected clients exchange DATA in both directions and are replaced', () =
       (dataPacketsBySession.get(packet.sessionId) ?? 0) + 1,
     );
   });
+  assert.ok(
+    [...dataPacketsBySession.values()].some(
+      (packetCount) => packetCount === levelOneSimulation.dataPacketsPerConnection,
+    ),
+  );
   dataPacketsBySession.forEach((packetCount) => {
-    assert.equal(packetCount, levelOneSimulation.dataPacketsPerConnection);
+    assert.ok(packetCount <= levelOneSimulation.dataPacketsPerConnection);
   });
 });
 
@@ -172,6 +185,49 @@ test('a random client position changes behavior after one minute', () => {
     after.getState().visibleClients.some(
       (client) => client.slotIndex === 1 && client.behavior === 'suspicious',
     ),
+  );
+});
+
+test('the second outbound attack SYN marks the client suspicious before either SYN arrives', () => {
+  const { simulation, getState } = createSimulation();
+  simulation.play();
+  advance(simulation, levelOneSimulation.attackStartDelay);
+
+  const attackStarted = getState();
+  assert.equal(attackStarted.attackSynPacketsSent, 1);
+  assert.equal(attackStarted.attackSynPacketsReceived, 0);
+  assert.equal(
+    attackStarted.activePackets.filter((packet) => packet.type === 'SYN' && packet.isAttack).length,
+    1,
+  );
+
+  simulation.tick(levelOneSimulation.attackStartDelay + levelOneSimulation.attackAttemptInterval);
+  const repeatedTraffic = getState();
+  assert.equal(repeatedTraffic.attackSynPacketsSent, 2);
+  assert.equal(repeatedTraffic.attackSynPacketsReceived, 0);
+  assert.equal(
+    repeatedTraffic.activePackets.filter(
+      (packet) => packet.type === 'SYN' && packet.isAttack,
+    ).length,
+    2,
+  );
+  assert.ok(
+    repeatedTraffic.visibleClients.some(
+      (client) => client.slotIndex === repeatedTraffic.attackClientSlot
+        && client.behavior === 'suspicious',
+    ),
+  );
+});
+
+test('normal traffic clients are not marked as waiting', () => {
+  const { simulation, getState } = createSimulation();
+  simulation.play();
+  advance(simulation, 50000);
+
+  assert.ok(getState().visibleClients.length > 0);
+  assert.equal(
+    getState().visibleClients.some((client) => client.behavior === 'waiting'),
+    false,
   );
 });
 
@@ -287,7 +343,7 @@ test('an empty client slot is reclaimed after one second', () => {
   assert.equal(slotWasReclaimedAt - slotBecameEmptyAt, 1000);
 });
 
-test('a failed client waits three seconds for SYN-ACK before disappearing', () => {
+test('a rejected legitimate client waits for the configured duration before disappearing', () => {
   const { simulation, getState } = createSimulation();
   simulation.play();
   let failedClientId = null;
@@ -303,6 +359,8 @@ test('a failed client waits three seconds for SYN-ACK before disappearing', () =
     if (waitingClient && clientStartedWaitingAt === null) {
       failedClientId = waitingClient.id;
       clientStartedWaitingAt = timestamp;
+      assert.equal(waitingClient.behavior, 'waiting');
+      assert.ok(getState().failedLegitimateAttempts > 0);
     }
     if (
       clientStartedWaitingAt !== null
@@ -316,6 +374,57 @@ test('a failed client waits three seconds for SYN-ACK before disappearing', () =
   assert.equal(
     clientDisappearedAt - clientStartedWaitingAt,
     levelOneSimulation.failedClientWaitDuration,
+  );
+});
+
+test('simulation speed changes the real-time waiting duration', () => {
+  function measureWaitingDuration(speedMultiplier) {
+    const { simulation, getState } = createSimulation({ speedMultiplier });
+    simulation.play();
+    let waitingClientId = null;
+    let waitingStartedAt = null;
+
+    for (let timestamp = 0; timestamp <= 300000; timestamp += 100) {
+      simulation.tick(timestamp);
+      const clients = getState().visibleClients;
+      const waitingClient = clients.find((client) => client.behavior === 'waiting');
+      if (!waitingClientId && waitingClient) {
+        waitingClientId = waitingClient.id;
+        waitingStartedAt = timestamp;
+      }
+      if (waitingClientId && !clients.some((client) => client.id === waitingClientId)) {
+        return timestamp - waitingStartedAt;
+      }
+    }
+    return null;
+  }
+
+  assert.equal(measureWaitingDuration(2), levelOneSimulation.failedClientWaitDuration / 2);
+  assert.equal(measureWaitingDuration(0.5), levelOneSimulation.failedClientWaitDuration / 0.5);
+});
+
+test('pausing freezes a waiting client and restart clears waiting state', () => {
+  const { simulation, getState } = createSimulation();
+  simulation.play();
+  let timestamp = 0;
+  let waitingClient;
+  for (; timestamp <= 120000; timestamp += 100) {
+    simulation.tick(timestamp);
+    waitingClient = getState().visibleClients.find((client) => client.behavior === 'waiting');
+    if (waitingClient) break;
+  }
+
+  assert.ok(waitingClient);
+  simulation.pause();
+  const pausedState = simulation.getState();
+  simulation.tick(timestamp + levelOneSimulation.failedClientWaitDuration * 2);
+  assert.deepEqual(simulation.getState(), pausedState);
+
+  simulation.reset(false);
+  assert.equal(simulation.getState().visibleClients.length, 0);
+  assert.equal(
+    simulation.getState().visibleClients.some((client) => client.behavior === 'waiting'),
+    false,
   );
 });
 

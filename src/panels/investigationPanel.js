@@ -2,6 +2,11 @@
  * Renders investigation infromation for a selected network object 
  */
 import { setGlossaryText } from '../glossary/glossaryText.js';
+import {
+  createEvidenceIcon,
+  decorateHeading,
+  panelIconMappings,
+} from '../icons/iconSystem.js';
 
 
 export function createInvestigationPanel({ onCollectEvidence, onClose }) {
@@ -34,6 +39,10 @@ export function createInvestigationPanel({ onCollectEvidence, onClose }) {
     `;
 
     section.querySelector('#investigation-title').textContent = investigation.title;
+    decorateHeading(
+      section.querySelector('#investigation-title'),
+      panelIconMappings.investigation,
+    );
     setGlossaryText(section.querySelector('[data-content="details"]'), investigation.details);
     setGlossaryText(section.querySelector('[data-content="meaning"]'), investigation.meaning);
 
@@ -50,7 +59,7 @@ export function createInvestigationPanel({ onCollectEvidence, onClose }) {
         row.append(term, description);
         facts.append(row);
       });
-      section.append(facts);
+      section.querySelector('.investigation-section').before(facts);
     }
 
     if (investigation.learnMore) {
@@ -115,6 +124,7 @@ export function createEvidencePanel({ onReportAttack = () => {} } = {}) {
   const emptyMessage = section.querySelector('.evidence-empty');
   const list = section.querySelector('.evidence-list');
   const reportButton = section.querySelector('.report-attack');
+  decorateHeading(section.querySelector('#evidence-title'), panelIconMappings.evidence);
   reportButton.addEventListener('click', onReportAttack);
 
   return {
@@ -125,7 +135,10 @@ export function createEvidencePanel({ onReportAttack = () => {} } = {}) {
       list.replaceChildren(
         ...evidenceItems.map((evidence) => {
           const item = document.createElement('li');
-          setGlossaryText(item, evidence.description);
+          const description = document.createElement('span');
+          description.className = 'evidence-list__description';
+          setGlossaryText(description, evidence.description);
+          item.append(createEvidenceIcon(evidence), description);
           return item;
         }),
       );

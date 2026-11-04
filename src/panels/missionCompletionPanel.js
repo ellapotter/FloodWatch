@@ -1,4 +1,5 @@
 import { setGlossaryText } from '../glossary/glossaryText.js';
+import { decorateHeading, panelIconMappings } from '../icons/iconSystem.js';
 
 // Creates the mission summary shown after the network has recovered.
 export function createMissionCompletionPanel({
@@ -14,7 +15,7 @@ export function createMissionCompletionPanel({
   section.className = 'panel mission-completion';
   section.hidden = true;
   section.innerHTML = `
-    <h1>Mission Completed</h1>
+    <h1 id="mission-completed-title" tabindex="-1">Mission Completed</h1>
     <section aria-labelledby="completion-attack-title">
       <h2 id="completion-attack-title"></h2>
       <p data-summary="attack"></p>
@@ -28,6 +29,13 @@ export function createMissionCompletionPanel({
       ${onContinue ? '<button type="button" data-action="continue"></button>' : ''}
     </div>
   `;
+  section.setAttribute('role', 'region');
+  section.setAttribute('aria-labelledby', 'mission-completed-title');
+  decorateHeading(
+    section.querySelector('#mission-completed-title'),
+    panelIconMappings.completion,
+    { size: 24 },
+  );
   section.querySelector('#completion-attack-title').textContent = attackName;
   section.querySelector('#completion-defense-title').textContent = defenseName;
   setGlossaryText(section.querySelector('[data-summary="attack"]'), attackSummary);
@@ -45,7 +53,7 @@ export function createMissionCompletionPanel({
     // Displays the completion summary.
     show() {
       section.hidden = false;
-      section.focus();
+      section.querySelector('#mission-completed-title').focus();
     },
     // Hides the summary when a mission is restarted.
     hide() {

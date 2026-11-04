@@ -16,11 +16,11 @@ import {
 export const levelOneSimulation = Object.freeze({
   backlogCapacity: 5,
   pendingConnectionTimeout: 36000,
-  packetDuration: 3000,
+  packetDuration: 4000,
   stepDelay: 750,
   clientSpawnInterval: 4500,
   dataPacketsPerConnection: 4,
-  failedClientWaitDuration: 3000,
+  failedClientWaitDuration: 12000,
   replacementDelay: 1000,
   attackAttemptInterval: 1000,
   attackStartDelay: 60000,
@@ -83,6 +83,15 @@ function getServerFacts(state) {
   ];
 }
 
+// Describes the immutable endpoints captured when an animated packet was created.
+function getPacketFacts(packet) {
+  return [
+    ['Packet Type', packet.type],
+    ['Source', packet.sourceLabel ?? packet.sourceId],
+    ['Destination', packet.destinationLabel ?? packet.destinationId],
+  ];
+}
+
 // Chooses the correct Level 1 explanation for the selected network object.
 export function getLevelOneInvestigation(selection, state) {
   if (!selection) return null;
@@ -116,17 +125,24 @@ export function getLevelOneInvestigation(selection, state) {
 
   if (selection.kind === 'packet') {
     const packet = selection.packet;
+    const packetContext = {
+      objectId: packet.id,
+      dynamicFacts: getPacketFacts(packet),
+    };
     if (packet.type === 'SYN' && packet.isAttack && state?.attackEvidenceObserved) {
-      return withContext(content.repeatedSynPacket, { objectId: packet.id });
+      return withContext(content.repeatedSynPacket, packetContext);
     }
     if (packet.type === 'SYN') {
-      return withContext(content.synPacket, { objectId: packet.id });
+      return withContext(content.synPacket, packetContext);
     }
     if (packet.type === 'SYN-ACK') {
-      return withContext(content.synAckPacket, { objectId: packet.id });
+      return withContext(content.synAckPacket, packetContext);
     }
     if (packet.type === 'ACK') {
-      return withContext(content.ackPacket, { objectId: packet.id });
+      return withContext(content.ackPacket, packetContext);
+    }
+    if (packet.type === 'DATA') {
+      return withContext(content.dataPacket, packetContext);
     }
   }
 
@@ -167,12 +183,21 @@ function createLevelOneBacklogPanel() {
 }
 
 // Refreshes a selected client with the latest data from the simulation.
-function resolveSelection(selection, state) {
-  if (selection?.kind !== 'client') return selection;
-  const currentClient = state.visibleClients.find(
-    (client) => client.id === selection.client.id,
-  );
-  return currentClient ? { ...selection, client: currentClient } : selection;
+export function resolveLevelOneSelection(selection, state) {
+  if (selection?.kind === 'client') {
+    const currentClient = state.visibleClients.find(
+      (client) => client.id === selection.client.id,
+    );
+    return currentClient ? { ...selection, client: currentClient } : null;
+  }
+  if (selection?.kind === 'packet') {
+    const currentPacket = state.activePackets.find(
+      (packet) => packet.id === selection.packet.id,
+    );
+    // Keep the captured packet snapshot available after its animation finishes.
+    return currentPacket ? { ...selection, packet: currentPacket } : selection;
+  }
+  return selection;
 }
 
 export const levelOneMission = Object.freeze({
@@ -182,12 +207,13 @@ export const levelOneMission = Object.freeze({
   statistics: [
     { key: 'pendingHalfOpenConnections', label: 'Pending TCP connections' },
     { key: 'completedHandshakes', label: 'Successful connections' },
+    { key: 'activeLegitimateConnections', label: 'Active connections' },
     { key: 'failedLegitimateAttempts', label: 'Failed connections' },
   ],
   report: levelOneReport,
   mitigation: levelOneMitigations,
   getInvestigation: getLevelOneInvestigation,
-  resolveSelection,
+  resolveSelection: resolveLevelOneSelection,
   // Creates the Level 1 observer and exposes the controls used by the mission page.
   createRuntime({ onStateChange, ...options }) {
     const observer = createNetworkObserverPanel({
@@ -211,8 +237,6 @@ export const levelOneMission = Object.freeze({
         // Shows the protection label only after SYN cookies are enabled.
         isActive: (state) => state.synCookieProtectionActive,
       },
-      // Level 1 treats handshake packets as investigable but leaves DATA packets decorative.
-      isPacketInvestigable: (packet) => packet.type !== 'DATA',
       // Level 1 hints identify the client whose repeated handshakes look suspicious.
       shouldHintClient: (client) => client.behavior === 'suspicious',
     });

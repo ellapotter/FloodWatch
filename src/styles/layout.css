@@ -81,6 +81,18 @@
   border: 1px solid var(--border);
 }
 
+.mission-card__icon {
+  display: grid;
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: 0.9rem;
+  place-items: center;
+  border: 1px solid rgba(67, 217, 255, 0.38);
+  border-radius: 0.6rem;
+  background: rgba(67, 217, 255, 0.08);
+  color: var(--accent-bright);
+}
+
 .panel {
   padding: 1.75rem;
 }
@@ -133,7 +145,10 @@
   line-height: 1.5;
 }
 
-.mission-card button {
+.mission-card__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   margin-top: auto;
   padding-top: 0.5rem;
   padding-bottom: 0.5rem;
@@ -145,6 +160,38 @@
   margin-block: 0;
   padding-left: 1.5rem;
   line-height: 1.5;
+}
+
+.game-flow li {
+  display: grid;
+  grid-template-columns: 1.25rem 1fr;
+  align-items: start;
+  column-gap: 0.6rem;
+}
+
+.game-flow li > .app-icon {
+  margin-top: 0.15rem;
+  color: var(--accent-bright);
+}
+
+.heading-with-icon,
+.inline-icon-label,
+.help-section summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.heading-with-icon .heading-icon,
+.inline-icon-label > .app-icon,
+.help-section summary > .app-icon {
+  flex: 0 0 auto;
+  color: var(--accent-bright);
+}
+
+.app-icon {
+  display: block;
+  stroke-width: 2;
 }
 
 .progress-details {
@@ -274,29 +321,44 @@
   width: 100%;
   margin-top: 1rem;
   border: 1px solid var(--border);
-  background: var(--background);
+  background-color: var(--background);
+  background-image:
+    linear-gradient(rgba(67, 217, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(67, 217, 255, 0.035) 1px, transparent 1px),
+    radial-gradient(circle at 78% 50%, rgba(67, 217, 255, 0.08), transparent 30%);
+  background-size: 32px 32px, 32px 32px, 100% 100%;
 }
 
-.connection-lines line {
-  stroke: var(--muted);
-  stroke-width: 2;
+.connection-path {
+  fill: none;
+  stroke: rgba(145, 164, 184, 0.42);
+  stroke-width: 1.5;
+  transition: stroke 160ms ease, filter 160ms ease;
 }
 
-.connection-lines .connection-hit-area {
-  stroke: transparent;
-  stroke-width: 18;
-  pointer-events: stroke;
+.connection-path--outbound {
+  stroke-dasharray: 5 7;
 }
 
-.connection-lines .connection-hit-area:focus,
-.connection-lines .connection-hit-area.is-selected {
-  stroke: rgba(67, 217, 255, 0.14);
+.connection-path.is-active {
+  stroke: rgba(67, 217, 255, 0.76);
+  filter: drop-shadow(0 0 3px rgba(67, 217, 255, 0.45));
 }
 
-.network-device rect {
-  fill: var(--surface);
+.network-diagram marker path {
+  fill: rgba(145, 164, 184, 0.72);
+}
+
+.network-device .network-device__card {
+  fill: rgba(12, 29, 48, 0.96);
   stroke: var(--accent);
   stroke-width: 2;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.28));
+  transition: fill 160ms ease, stroke 160ms ease, filter 160ms ease;
+}
+
+.network-device {
+  pointer-events: bounding-box;
 }
 
 .investigable {
@@ -321,42 +383,133 @@
   display: none;
 }
 
-.investigable:hover rect,
-.investigable:focus rect,
-.investigable.is-selected rect {
+.network-device.investigable:hover .network-device__card,
+.network-device.investigable:focus .network-device__card,
+.network-device.investigable.is-selected .network-device__card,
+.network-packet.investigable:hover .network-packet__body,
+.network-packet.investigable:focus .network-packet__body,
+.network-packet.investigable.is-selected .network-packet__body {
   stroke: var(--accent-bright);
-  stroke-width: 4;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 8px rgba(67, 217, 255, 0.55));
 }
 
 .investigable:focus {
-  outline: none;
+  outline: 3px solid var(--accent-bright);
+  outline-offset: 4px;
 }
 
-.network-device--server rect {
+.mission-completion h1:focus {
+  outline: 3px solid var(--accent-bright);
+  outline-offset: 0.35rem;
+}
+
+.network-device--server .network-device__card {
   stroke-width: 3;
 }
 
-.network-device.is-hinted rect {
+.network-device.is-hinted .network-device__card,
+.network-device.is-waiting .network-device__card {
   stroke: #ffd166;
-  stroke-width: 4;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 8px rgba(255, 209, 102, 0.35));
+}
+
+.network-device__icon rect,
+.network-device__icon path {
+  fill: none;
+  stroke: #bcefff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.network-device__icon circle {
+  fill: #43d9ff;
+  stroke: none;
+}
+
+.network-device__state-dot {
+  fill: #91a4b8;
+  stroke: rgba(255, 255, 255, 0.28);
+  stroke-width: 1;
+}
+
+.network-device.is-connected .network-device__state-dot,
+.network-device--server .network-device__state-dot {
+  fill: #65e6a5;
+}
+
+.network-device.is-connecting .network-device__state-dot {
+  fill: #43d9ff;
+}
+
+.network-device.is-waiting .network-device__state-dot,
+.network-device.is-hinted .network-device__state-dot,
+.network-device--server.is-under-pressure .network-device__state-dot {
+  fill: #ffd166;
+}
+
+.network-device--server.is-under-pressure .network-device__card {
+  stroke: #ffd166;
+  filter: drop-shadow(0 0 9px rgba(255, 209, 102, 0.3));
+}
+
+.network-device--server.is-recovering .network-device__card,
+.network-device--server.is-protected .network-device__card {
+  stroke: #65e6a5;
+  filter: drop-shadow(0 0 9px rgba(101, 230, 165, 0.32));
 }
 
 .network-device text {
   fill: var(--text);
   font-size: 16px;
+  pointer-events: none;
 }
 
-.network-packet rect {
-  fill: var(--background);
+.network-device .network-device__status {
+  fill: #91a4b8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.network-device.is-waiting .network-device__status,
+.network-device.is-hinted .network-device__status,
+.network-device--server.is-under-pressure .network-device__status {
+  fill: #ffd166;
+}
+
+.network-device--server.is-recovering .network-device__status,
+.network-device--server.is-protected .network-device__status {
+  fill: #65e6a5;
+}
+
+.network-packet .network-packet__body {
+  fill: rgba(7, 17, 31, 0.96);
   stroke: var(--accent-bright);
-  stroke-width: 2;
+  stroke-width: 1.5;
+  filter: drop-shadow(0 0 5px rgba(67, 217, 255, 0.35));
+}
+
+.network-packet.is-client-bound .network-packet__body {
+  fill: rgba(18, 47, 57, 0.96);
+  stroke: #65e6a5;
 }
 
 .network-packet text {
   fill: var(--text);
-  font-size: 12px;
-  font-weight: 700;
   pointer-events: none;
+}
+
+.network-packet .network-packet__type {
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.network-packet .network-packet__route {
+  fill: var(--muted);
+  font-size: 8.5px;
+  font-weight: 600;
 }
 
 .network-packet .network-packet__hit-area {
@@ -367,6 +520,13 @@
 
 .network-packet:not(.investigable) {
   pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connection-path,
+  .network-device .network-device__card {
+    transition: none;
+  }
 }
 
 .simulation-controls {
@@ -437,8 +597,58 @@
   display: grid;
   gap: 0.75rem;
   margin-block: 0;
-  padding-left: 1.25rem;
+  padding-left: 0;
+  list-style: none;
   line-height: 1.5;
+}
+
+.evidence-list li {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.evidence-list__description {
+  min-width: 0;
+}
+
+.evidence-icon {
+  position: relative;
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 0.45rem;
+  background: rgba(87, 132, 184, 0.1);
+  color: #79aee8;
+}
+
+.evidence-icon[data-category="packet"] {
+  background: rgba(123, 134, 238, 0.11);
+  color: #a7b5ff;
+}
+
+.evidence-icon[data-category="server"],
+.evidence-icon[data-category="backlog"] {
+  background: rgba(171, 129, 224, 0.11);
+  color: #c7a7ee;
+}
+
+.evidence-icon[data-variant="warning"] {
+  background: rgba(255, 209, 102, 0.1);
+  color: #ffd166;
+}
+
+.evidence-icon__secondary {
+  position: absolute;
+  right: -0.25rem;
+  bottom: -0.25rem;
+  padding: 0.1rem;
+  border-radius: 50%;
+  background: var(--surface);
+  color: #ffd166;
 }
 
 .report-attack {
@@ -812,6 +1022,100 @@
   color: var(--text);
 }
 
+.help-network-basics {
+  margin-bottom: 1.5rem;
+}
+
+.help-network-diagram {
+  display: block;
+  width: 100%;
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+  background: var(--background);
+}
+
+.help-network-path {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 3;
+}
+
+.help-network-object {
+  cursor: pointer;
+}
+
+.help-network-object rect {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.help-network-object text {
+  fill: var(--text);
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.help-network-object:hover rect,
+.help-network-object:focus rect,
+.help-network-object.is-selected rect {
+  stroke: var(--accent-bright);
+  stroke-width: 4;
+}
+
+.help-network-object:focus {
+  outline: 3px solid var(--accent-bright);
+  outline-offset: 3px;
+}
+
+.help-network-packet {
+  animation: help-packet-request 5s linear infinite;
+  animation-delay: var(--packet-delay);
+}
+
+.help-network-packet--response {
+  animation-name: help-packet-response;
+}
+
+.help-network-packet text {
+  font-size: 12px;
+}
+
+.help-network-information {
+  min-height: 8rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-top: 0;
+}
+
+.help-network-information h4,
+.help-network-information h5,
+.help-network-information p {
+  margin: 0;
+}
+
+.help-network-information h5 {
+  margin-top: 0.75rem;
+  color: var(--text);
+  font-size: 1rem;
+}
+
+@keyframes help-packet-request {
+  from { transform: translate(170px, 100px); }
+  to { transform: translate(630px, 100px); }
+}
+
+@keyframes help-packet-response {
+  from { transform: translate(630px, 150px); }
+  to { transform: translate(170px, 150px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .help-network-packet {
+    animation-play-state: paused;
+  }
+}
+
 .settings-page {
   grid-template-columns: 1fr;
 }
@@ -1006,4 +1310,8 @@
   .settings-header {
     flex-direction: column;
   }
+}
+.mission-layout [hidden],
+.mission-completion[hidden] {
+  display: none !important;
 }

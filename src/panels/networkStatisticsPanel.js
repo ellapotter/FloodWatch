@@ -1,4 +1,6 @@
 // Creates a statistics panel that summarizes the current state of the network.
+import { decorateHeading, panelIconMappings } from '../icons/iconSystem.js';
+
 export function createNetworkStatisticsPanel(statistics) {
   const section = document.createElement('section');
   const valueElements = new Map();
@@ -8,6 +10,7 @@ export function createNetworkStatisticsPanel(statistics) {
     <h2 id="statistics-title">Network Statistics</h2>
     <dl class="statistics-list"></dl>
   `;
+  decorateHeading(section.querySelector('#statistics-title'), panelIconMappings.statistics);
 
   const list = section.querySelector('.statistics-list');
   statistics.forEach(({ key, label }) => {

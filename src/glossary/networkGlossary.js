@@ -1,8 +1,11 @@
-// Creates an immutable glossary entry with optional alternate spellings.
+
 function entry(id, term, definition, aliases = []) {
   return Object.freeze({ id, term, definition, aliases: Object.freeze(aliases) });
 }
 
+// These are all the glossary entries for the network concepts used in the game.
+// Each entry has a unique ID, a term, a definition, and optional aliases that can be used to reference the same concept.
+// This will help players with little networking experience understand the concepts better
 export const networkGlossary = Object.freeze([
   entry('network', 'Network', 'A group of connected devices that can communicate and exchange information with one another. Networks allow devices to share data, access services, and communicate over connections such as the Internet.', ['Networks']),
   entry('client', 'Client', 'A device or application that requests information or services from another device called a server. For example, a web browser acts as a client when requesting a web page.', ['Clients']),

@@ -1,5 +1,6 @@
 import { createNavigationPanel } from '../panels/navigationPanel.js';
 import { resetProgress } from '../panels/missionCardPanel.js';
+import { decorateHeading, settingsIconMappings } from '../icons/iconSystem.js';
 
 const STORAGE_KEY = 'floodwatch-settings';
 
@@ -115,6 +116,12 @@ export function renderSettingsPage({ returnRoute = null, onProgressReset = () =>
       </div>
     </dialog>
   `;
+  decorateHeading(main.querySelector('.settings-header h1'), settingsIconMappings.page, {
+    size: 24,
+  });
+  decorateHeading(main.querySelector('#speed-title'), settingsIconMappings.speed);
+  decorateHeading(main.querySelector('#hints-title'), settingsIconMappings.hints);
+  decorateHeading(main.querySelector('#reset-title'), settingsIconMappings.reset);
 
   const form = main.querySelector('.settings-form');
   const confirmation = main.querySelector('.settings-confirmation');

@@ -1,4 +1,10 @@
 import { levelOneMission } from '../game/levels/levelOneMission.js';
+import {
+  createIcon,
+  decorateHeading,
+  missionIconMappings,
+  missionStatusIconMappings,
+} from '../icons/iconSystem.js';
 
 export const missions = [
   {
@@ -55,21 +61,36 @@ export function getMissionDisplayTitle(mission) {
   return mission.isFinal ? 'Final Mission' : `Level ${levelNames[mission.level - 1]}`;
 }
 
+export function getMissionCardTitle(mission) {
+  return mission.isFinal
+    ? getMissionDisplayTitle(mission)
+    : `Level ${mission.level}: ${mission.title}`;
+}
+
 // Creates a mission-selection card and enables it when the mission is available.
 export function createMissionCardPanel(mission, status) {
   const article = document.createElement('article');
   const isLocked = status === 'Locked';
-  const buttonLabel = status === 'Completed' ? 'Replay mission' : 'Enter mission';
+  const isCompleted = status === 'Completed';
+  const buttonLabel = status === 'Completed' ? 'Replay' : 'Play';
 
   article.className = 'mission-card';
   article.innerHTML = `
-    <h3>${getMissionDisplayTitle(mission)}</h3>
-    <button type="button" ${isLocked ? 'disabled' : ''}>${isLocked ? 'Locked' : buttonLabel}</button>
+    <div class="mission-card__icon" aria-hidden="true"></div>
+    <h3>${isCompleted ? getMissionCardTitle(mission) : getMissionDisplayTitle(mission)}</h3>
+    ${isCompleted ? `<p>${mission.description}</p>` : ''}
+    <button class="mission-card__action" type="button" ${isLocked ? 'disabled' : ''}>${isLocked ? 'Locked' : buttonLabel}</button>
   `;
+  article.querySelector('.mission-card__icon').append(
+    createIcon(missionIconMappings[mission.id], { size: 27 }),
+  );
+  article.querySelector('.mission-card__action').prepend(
+    createIcon(missionStatusIconMappings[status], { size: 17 }),
+  );
 
   if (!isLocked) {
     // Opens this mission when the player selects an available card.
-    article.querySelector('button').addEventListener('click', () => {
+    article.querySelector('.mission-card__action').addEventListener('click', () => {
       window.location.hash = `mission/${mission.id}`;
     });
   }
@@ -168,5 +189,6 @@ export function createProgressPanel(progress) {
       ${summary.completedCount} of ${summary.totalMissions}
     </progress>
   `;
+  decorateHeading(section.querySelector('#progress-title'), 'circle-check');
   return section;
 }

@@ -1,5 +1,95 @@
 import { createNavigationPanel } from '../panels/navigationPanel.js';
 import { applyGlossaryTerms } from '../glossary/glossaryText.js';
+import { networkGlossaryById } from '../glossary/networkGlossary.js';
+import {
+  createIcon,
+  decorateHeading,
+  gameFlowIconMappings,
+  helpSectionIconMappings,
+} from '../icons/iconSystem.js';
+
+function createNetworkBasicsDiagram() {
+  const section = document.createElement('section');
+  section.className = 'help-network-basics';
+  section.setAttribute('aria-labelledby', 'network-basics-title');
+  section.innerHTML = `
+    <h3 id="network-basics-title">Interactive Network Basics</h3>
+    <svg class="help-network-diagram" viewBox="0 0 800 250" role="group" aria-labelledby="help-network-title help-network-description">
+      <title id="help-network-title">Client, router, and server communication</title>
+      <desc id="help-network-description">Select the client, router, server, or a moving packet to read its glossary definition.</desc>
+      <path class="help-network-path" d="M145 125 H655"></path>
+      <g class="help-network-devices"></g>
+      <g class="help-network-packets"></g>
+    </svg>
+    <div class="help-network-information" aria-live="polite">
+      <h4>More Information</h4>
+      <p>Select a network component.</p>
+    </div>
+  `;
+
+  const svgNamespace = 'http://www.w3.org/2000/svg';
+  const devices = section.querySelector('.help-network-devices');
+  const packets = section.querySelector('.help-network-packets');
+  const information = section.querySelector('.help-network-information');
+  const positions = [
+    ['client', 100, 'Client'],
+    ['router', 400, 'Router'],
+    ['server', 700, 'Server'],
+  ];
+
+  function showDefinition(glossaryId, trigger) {
+    const glossaryEntry = networkGlossaryById.get(glossaryId);
+    information.replaceChildren();
+    const heading = document.createElement('h4');
+    heading.textContent = 'More Information';
+    const term = document.createElement('h5');
+    term.textContent = glossaryEntry.term;
+    const definition = document.createElement('p');
+    definition.textContent = glossaryEntry.definition;
+    information.append(heading, term, definition);
+    section.querySelectorAll('.help-network-object').forEach((object) => {
+      object.classList.toggle('is-selected', object === trigger);
+      object.setAttribute('aria-pressed', String(object === trigger));
+    });
+  }
+
+  function makeInteractive(element, glossaryId, label) {
+    element.classList.add('help-network-object');
+    element.setAttribute('role', 'button');
+    element.setAttribute('tabindex', '0');
+    element.setAttribute('aria-label', `Learn more about ${label}`);
+    element.setAttribute('aria-pressed', 'false');
+    const activate = () => showDefinition(glossaryId, element);
+    element.addEventListener('click', activate);
+    element.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      activate();
+    });
+  }
+
+  positions.forEach(([id, x, label]) => {
+    const device = document.createElementNS(svgNamespace, 'g');
+    device.setAttribute('transform', `translate(${x} 125)`);
+    device.innerHTML = `
+      <rect x="-55" y="-35" width="110" height="70" rx="4"></rect>
+      <text text-anchor="middle" dominant-baseline="middle">${label}</text>
+    `;
+    makeInteractive(device, id, label);
+    devices.append(device);
+  });
+
+  ['request', 'response'].forEach((direction, index) => {
+    const packet = document.createElementNS(svgNamespace, 'g');
+    packet.classList.add('help-network-packet', `help-network-packet--${direction}`);
+    packet.innerHTML = '<rect x="-34" y="-17" width="68" height="34" rx="3"></rect><text text-anchor="middle" dominant-baseline="middle">Packet</text>';
+    packet.style.setProperty('--packet-delay', `${index * 2.5}s`);
+    makeInteractive(packet, 'packet', `${direction} packet`);
+    packets.append(packet);
+  });
+
+  return section;
+}
 
 const helpSections = [
   {
@@ -132,7 +222,7 @@ export function renderHelpPage({ returnRoute = null } = {}) {
       ${helpSections
         .map(
           (section, index) => `
-            <details class="help-section" ${index === 0 ? 'open' : ''}>
+            <details class="help-section" data-help-section="${section.id}" ${index === 0 ? 'open' : ''}>
               <summary><span>${section.title}</span></summary>
               <div class="help-section__content">${section.content}</div>
             </details>
@@ -142,6 +232,35 @@ export function renderHelpPage({ returnRoute = null } = {}) {
     </div>
   `;
   main.querySelectorAll('.help-section__content').forEach(applyGlossaryTerms);
+  const fundamentals = main.querySelector('[data-help-section="fundamentals"] .help-section__content');
+  fundamentals.prepend(createNetworkBasicsDiagram());
+  decorateHeading(main.querySelector('.help-header h1'), 'circle-help', { size: 24 });
+  decorateHeading(main.querySelector('#network-basics-title'), 'network');
+  main.querySelectorAll('.help-section').forEach((details) => {
+    const iconName = helpSectionIconMappings[details.dataset.helpSection];
+    if (iconName) details.querySelector('summary').prepend(createIcon(iconName, { size: 20 }));
+  });
+  main.querySelectorAll('[data-help-section="how-to-play"] .help-steps strong')
+    .forEach((label) => {
+      const title = label.textContent.replace(/:$/, '');
+      const iconName = gameFlowIconMappings[title];
+      if (!iconName) return;
+      label.classList.add('inline-icon-label');
+      label.prepend(createIcon(iconName, { size: 17 }));
+    });
+  const fundamentalIcons = {
+    Client: 'monitor',
+    Server: 'server',
+    Router: 'router',
+    Packet: 'package',
+  };
+  main.querySelectorAll('[data-help-section="fundamentals"] .help-definitions dt')
+    .forEach((term) => {
+      const iconName = fundamentalIcons[term.textContent];
+      if (!iconName) return;
+      term.classList.add('inline-icon-label');
+      term.prepend(createIcon(iconName, { size: 18 }));
+    });
   page.append(createNavigationPanel(), main);
   return page;
 }

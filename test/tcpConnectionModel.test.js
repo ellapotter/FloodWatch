@@ -22,7 +22,7 @@ test('a legitimate handshake enters and then leaves the pending backlog', () => 
   assert.equal(received.accepted, true);
   assert.equal(model.getState().pendingHalfOpenConnections, 1);
   assert.equal(model.sendSynAck('connection-1'), true);
-  assert.equal(model.completeHandshake('connection-1'), true);
+  assert.equal(model.completeHandshake('connection-1', { originId: 'client-1' }), true);
   assert.equal(model.getState().pendingHalfOpenConnections, 0);
   assert.equal(model.getState().completedHandshakes, 1);
 });
@@ -110,8 +110,89 @@ test('SYN cookies respond and complete legitimate handshakes without pending sta
     true,
   );
   assert.equal(
-    model.completeHandshake('cookie-connection', { usesSynCookie: true }),
+    model.completeHandshake('cookie-connection', {
+      usesSynCookie: true,
+      originId: 'client-1',
+    }),
     true,
   );
+  assert.equal(model.getState().completedHandshakes, 1);
+});
+
+test('an expired connection ACK cannot complete a handshake', () => {
+  const model = createModel();
+  model.receiveSyn({ connectionId: 'expired', originId: 'client-1', isAttacker: false, receivedAt: 0 });
+  model.sendSynAck('expired');
+  model.expirePendingConnections(100);
+
+  assert.equal(model.completeHandshake('expired'), false);
+  assert.equal(model.getState().completedHandshakes, 0);
+});
+
+test('a missing or out-of-order ACK cannot complete a handshake', () => {
+  const model = createModel();
+  assert.equal(model.completeHandshake('missing'), false);
+  model.receiveSyn({ connectionId: 'out-of-order', originId: 'client-1', isAttacker: false, receivedAt: 0 });
+
+  assert.equal(model.completeHandshake('out-of-order'), false);
+  assert.equal(model.getState().completedHandshakes, 0);
+});
+
+test('a duplicate ACK cannot count a completed handshake twice', () => {
+  const model = createModel();
+  model.receiveSyn({ connectionId: 'connection-1', originId: 'client-1', isAttacker: false, receivedAt: 0 });
+  model.sendSynAck('connection-1');
+
+  assert.equal(model.completeHandshake('connection-1', { originId: 'client-1' }), true);
+  assert.equal(model.completeHandshake('connection-1', { originId: 'client-1' }), false);
+  assert.equal(model.getState().completedHandshakes, 1);
+});
+
+test('a rejected handshake cannot establish a connection', () => {
+  const model = createModel();
+  ['attack-1', 'attack-2'].forEach((connectionId, receivedAt) => {
+    model.receiveSyn({ connectionId, originId: 'attacker', isAttacker: true, receivedAt });
+  });
+  const rejected = model.receiveSyn({
+    connectionId: 'rejected', originId: 'client-1', isAttacker: false, receivedAt: 2,
+  });
+
+  assert.equal(rejected.accepted, false);
+  assert.equal(model.sendSynAck('rejected'), false);
+  assert.equal(model.completeHandshake('rejected'), false);
+  assert.equal(model.getState().completedHandshakes, 0);
+});
+
+test('an invalid or expired SYN cookie ACK is rejected', () => {
+  const model = createModel();
+  assert.equal(model.completeHandshake('missing-cookie', { usesSynCookie: true }), false);
+  model.receiveSyn({
+    connectionId: 'expired-cookie', originId: 'client-1', isAttacker: false,
+    receivedAt: 0, usesSynCookie: true,
+  });
+  model.sendSynAck('expired-cookie', { usesSynCookie: true });
+  model.expirePendingConnections(100);
+
+  assert.equal(model.completeHandshake('expired-cookie', { usesSynCookie: true }), false);
+  assert.equal(model.getState().completedHandshakes, 0);
+});
+
+test('SYN cookie ACKs validate origin and cannot be duplicated', () => {
+  const model = createModel();
+  model.receiveSyn({
+    connectionId: 'cookie', originId: 'client-1', isAttacker: false,
+    receivedAt: 0, usesSynCookie: true,
+  });
+  model.sendSynAck('cookie', { usesSynCookie: true });
+
+  assert.equal(model.completeHandshake('cookie', {
+    usesSynCookie: true, originId: 'client-2',
+  }), false);
+  assert.equal(model.completeHandshake('cookie', {
+    usesSynCookie: true, originId: 'client-1',
+  }), true);
+  assert.equal(model.completeHandshake('cookie', {
+    usesSynCookie: true, originId: 'client-1',
+  }), false);
   assert.equal(model.getState().completedHandshakes, 1);
 });

@@ -1,4 +1,6 @@
 // Creates a configurable capacity panel that a mission can connect to its own state.
+import { decorateHeading, panelIconMappings } from '../icons/iconSystem.js';
+
 export function createBacklogPanel({
   capacity,
   title = 'Backlog',
@@ -30,6 +32,7 @@ export function createBacklogPanel({
     ...statusMessages,
   };
   section.querySelector('h2').textContent = title;
+  decorateHeading(section.querySelector('h2'), panelIconMappings.backlog);
   section.querySelector('.backlog-description').textContent = description;
   section.querySelector('.backlog-count span').textContent = countLabel;
   const count = section.querySelector('.backlog-count strong');

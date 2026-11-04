@@ -15,6 +15,7 @@ export class TcpConnectionModel {
   // Clears pending connections and resets every TCP counter.
   reset() {
     this.pendingConnections = new Map();
+    this.synCookieChallenges = new Map();
     this.synPacketsReceived = 0;
     this.synAckPacketsSent = 0;
     this.completedHandshakes = 0;
@@ -33,6 +34,16 @@ export class TcpConnectionModel {
     this.synPacketsReceived += 1;
 
     if (usesSynCookie) {
+      if (this.synCookieChallenges.has(connectionId)) {
+        return { accepted: false, reason: 'duplicate-connection' };
+      }
+      this.synCookieChallenges.set(connectionId, {
+        connectionId,
+        originId,
+        isAttacker,
+        creationTime: receivedAt,
+        handshakeStage: 'syn-received',
+      });
       return { accepted: true, usesSynCookie: true, stateAllocated: false };
     }
 
@@ -56,26 +67,46 @@ export class TcpConnectionModel {
   // Records a SYN-ACK for a stored connection or SYN-cookie response.
   sendSynAck(connectionId, { usesSynCookie = false } = {}) {
     if (usesSynCookie) {
+      const challenge = this.synCookieChallenges.get(connectionId);
+      if (!challenge || challenge.handshakeStage !== 'syn-received') return false;
+      challenge.handshakeStage = 'syn-ack-sent';
       this.synAckPacketsSent += 1;
       return true;
     }
 
     const connection = this.pendingConnections.get(connectionId);
-    if (!connection) return false;
+    if (!connection || connection.handshakeStage !== 'syn-received') return false;
     connection.handshakeStage = 'syn-ack-sent';
     this.synAckPacketsSent += 1;
     return true;
   }
 
   // Completes a legitimate handshake and releases its pending state.
-  completeHandshake(connectionId, { usesSynCookie = false } = {}) {
+  completeHandshake(connectionId, { usesSynCookie = false, originId = null } = {}) {
     if (usesSynCookie) {
+      const challenge = this.synCookieChallenges.get(connectionId);
+      if (
+        !challenge
+        || challenge.isAttacker
+        || challenge.handshakeStage !== 'syn-ack-sent'
+        || challenge.originId !== originId
+      ) {
+        return false;
+      }
+      this.synCookieChallenges.delete(connectionId);
       this.completedHandshakes += 1;
       return true;
     }
 
     const connection = this.pendingConnections.get(connectionId);
-    if (!connection || connection.isAttacker) return false;
+    if (
+      !connection
+      || connection.isAttacker
+      || connection.handshakeStage !== 'syn-ack-sent'
+      || connection.originId !== originId
+    ) {
+      return false;
+    }
     connection.handshakeStage = 'established';
     this.pendingConnections.delete(connectionId);
     this.completedHandshakes += 1;
@@ -92,6 +123,11 @@ export class TcpConnectionModel {
       expired.push({ ...connection });
       this.pendingConnections.delete(connectionId);
       this.timedOutConnections += 1;
+    });
+    this.synCookieChallenges.forEach((challenge, connectionId) => {
+      if (currentTime - challenge.creationTime >= this.pendingConnectionTimeout) {
+        this.synCookieChallenges.delete(connectionId);
+      }
     });
     return expired;
   }
@@ -170,15 +206,13 @@ export class LevelOneSimulation {
 
   // Returns the clients that should currently appear in the network diagram.
   getVisibleClients() {
-    const attackEvidenceObserved = this.attackSynPacketsReceived
-      >= this.configuration.repeatedSynEvidenceThreshold
-      && this.missingAttackAcksObserved > 0;
+    const repeatedSynTrafficStarted = this.attackSynPacketsSent >= 2;
     return [...this.activeClients.values()].map((client) => ({
       id: client.id,
       label: client.label,
       slotIndex: client.slotIndex,
       state: client.state,
-      behavior: client.compromised && attackEvidenceObserved
+      behavior: client.compromised && repeatedSynTrafficStarted
         ? 'suspicious'
         : client.state === 'waiting-for-syn-ack'
           ? 'waiting'
@@ -203,9 +237,13 @@ export class LevelOneSimulation {
         slotIndex: packet.source.slotIndex ?? packet.destination.slotIndex,
         sourceId: packet.source.id,
         destinationId: packet.destination.id,
+        sourceLabel: packet.sourceLabel,
+        destinationLabel: packet.destinationLabel,
+        visualLaneOffset: packet.visualLaneOffset,
         direction: packet.destination.id === this.server.id
           ? 'client-to-server'
           : 'server-to-client',
+        progress,
         x: packet.source.x + (packet.destination.x - packet.source.x) * progress,
         y: packet.source.y + (packet.destination.y - packet.source.y) * progress,
       };
@@ -214,12 +252,17 @@ export class LevelOneSimulation {
 
   /** Returns a serializable snapshot consumed by mission components. */
   getState() {
+    const visibleClients = this.getVisibleClients();
     return {
       clientCount: this.activeClients.size,
       isPlaying: this.isPlaying,
       simulationPhase: this.simulationPhase,
       statusMessage: this.statusMessage,
-      visibleClients: this.getVisibleClients(),
+      visibleClients,
+      activeLegitimateConnections: visibleClients.filter(
+        (client) => client.state === 'connected' && client.behavior === 'normal',
+      ).length,
+      activePackets: this.getPackets(),
       activePacketCount: this.activePackets.size,
       attackClientSlot: this.selectedAttackSlot,
       attackSynPacketsSent: this.attackSynPacketsSent,
@@ -318,6 +361,9 @@ export class LevelOneSimulation {
       type,
       source,
       destination,
+      sourceLabel: source.label,
+      destinationLabel: destination.label,
+      visualLaneOffset: ((this.packetSequence - 1) % 3 - 1) * 4,
       startedAt: this.simulationTime,
       duration: this.configuration.packetDuration,
     };
@@ -539,9 +585,19 @@ export class LevelOneSimulation {
     }
 
     if (!client) return;
-    this.connectionModel.completeHandshake(packet.connectionId, {
+    const handshakeCompleted = this.connectionModel.completeHandshake(packet.connectionId, {
       usesSynCookie: packet.usesSynCookie,
+      originId: packet.sessionId,
     });
+    if (!handshakeCompleted) {
+      client.state = 'waiting-for-syn-ack';
+      this.statusMessage = `${packet.connectionId}: final ACK rejected; no connection is established.`;
+      this.schedule(this.configuration.failedClientWaitDuration, 'remove-client', {
+        sessionId: client.id,
+        replace: true,
+      });
+      return;
+    }
     client.state = 'connected';
     client.connectedAt = this.simulationTime;
     this.statusMessage = `${packet.connectionId}: handshake complete; ${client.label} begins exchanging data.`;

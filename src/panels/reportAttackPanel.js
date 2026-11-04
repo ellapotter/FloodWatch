@@ -1,6 +1,11 @@
 
 import { createReportState } from '../game/gameEngine.js';
 import { setGlossaryText } from '../glossary/glossaryText.js';
+import {
+  createEvidenceIcon,
+  decorateHeading,
+  panelIconMappings,
+} from '../icons/iconSystem.js';
 
 
 export function createReportAttackPanel({
@@ -79,12 +84,17 @@ export function createReportAttackPanel({
     `;
 
     setGlossaryText(section.querySelector('.report-prompt'), configuration.prompt);
+    decorateHeading(section.querySelector('.section-heading h2'), panelIconMappings.report);
     const evidenceContent = section.querySelector('.report-evidence-content');
     if (evidenceItems.length) {
       const list = document.createElement('ul');
+      list.className = 'evidence-list evidence-list--review';
       evidenceItems.forEach((evidence) => {
         const item = document.createElement('li');
-        setGlossaryText(item, evidence.description);
+        const description = document.createElement('span');
+        description.className = 'evidence-list__description';
+        setGlossaryText(description, evidence.description);
+        item.append(createEvidenceIcon(evidence), description);
         list.append(item);
       });
       evidenceContent.append(list);

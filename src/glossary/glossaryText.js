@@ -63,7 +63,11 @@ function buildMatches(glossary) {
 
 
  // Splits text into plain text and glossary term segments.
-export function findGlossaryMatches(text, glossary = networkGlossary) {
+export function findGlossaryMatches(
+  text,
+  glossary = networkGlossary,
+  linkedEntryIds = new Set(),
+) {
   if (!text) return [];
   const matches = buildMatches(glossary);
   const normalizedText = text.toLocaleLowerCase();
@@ -84,17 +88,20 @@ export function findGlossaryMatches(text, glossary = networkGlossary) {
       continue;
     }
 
-    if (plainTextStart < index) {
-      segments.push({ type: 'text', text: text.slice(plainTextStart, index) });
-    }
     const end = index + glossaryTerm.text.length;
-    segments.push({
-      type: 'term',
-      text: text.slice(index, end),
-      glossaryEntry: glossaryTerm.glossaryEntry,
-    });
+    if (!linkedEntryIds.has(glossaryTerm.glossaryEntry.id)) {
+      if (plainTextStart < index) {
+        segments.push({ type: 'text', text: text.slice(plainTextStart, index) });
+      }
+      segments.push({
+        type: 'term',
+        text: text.slice(index, end),
+        glossaryEntry: glossaryTerm.glossaryEntry,
+      });
+      linkedEntryIds.add(glossaryTerm.glossaryEntry.id);
+      plainTextStart = end;
+    }
     index = end;
-    plainTextStart = end;
   }
 
   if (plainTextStart < text.length) {
@@ -104,9 +111,9 @@ export function findGlossaryMatches(text, glossary = networkGlossary) {
 }
 
 // Converts matched text segments into clickable glossary text
-export function createGlossaryFragment(text) {
+export function createGlossaryFragment(text, linkedEntryIds = new Set()) {
   const fragment = document.createDocumentFragment();
-  findGlossaryMatches(text).forEach((segment) => {
+  findGlossaryMatches(text, networkGlossary, linkedEntryIds).forEach((segment) => {
     if (segment.type === 'text') {
       fragment.append(document.createTextNode(segment.text));
       return;
@@ -135,15 +142,42 @@ export function setGlossaryText(element, text) {
 }
 
 const skippedElements = new Set([
+  'A',
   'BUTTON',
+  'CODE',
+  'H1',
+  'H2',
+  'H3',
+  'H4',
+  'H5',
+  'H6',
   'INPUT',
+  'LABEL',
+  'LEGEND',
   'OPTION',
+  'PRE',
   'SCRIPT',
   'SELECT',
   'STYLE',
+  'SUMMARY',
   'TEXTAREA',
 ]);
 
+const semanticScopeSelector = [
+  'p',
+  'li',
+  'dd',
+  'dt',
+  'figcaption',
+  'blockquote',
+  'div',
+  'section',
+  'article',
+].join(',');
+
+function getGlossaryScope(element, root) {
+  return element.closest(semanticScopeSelector) ?? root;
+}
 
 export function applyGlossaryTerms(root) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -154,7 +188,7 @@ export function applyGlossaryTerms(root) {
     if (
       node.nodeValue.trim()
       && parent
-      && !skippedElements.has(parent.tagName)
+      && !parent.closest([...skippedElements].map((tag) => tag.toLowerCase()).join(','))
       && !parent.closest('.glossary-term, .glossary-popup')
     ) {
       textNodes.push(node);
@@ -162,9 +196,19 @@ export function applyGlossaryTerms(root) {
     node = walker.nextNode();
   }
 
+  const linkedIdsByScope = new Map();
+  root.querySelectorAll('.glossary-term[data-glossary-id]').forEach((term) => {
+    const scope = getGlossaryScope(term.parentElement, root);
+    if (!linkedIdsByScope.has(scope)) linkedIdsByScope.set(scope, new Set());
+    linkedIdsByScope.get(scope).add(term.dataset.glossaryId);
+  });
+
   textNodes.forEach((textNode) => {
-    const segments = findGlossaryMatches(textNode.nodeValue);
-    if (!segments.some((segment) => segment.type === 'term')) return;
-    textNode.replaceWith(createGlossaryFragment(textNode.nodeValue));
+    const scope = getGlossaryScope(textNode.parentElement, root);
+    if (!linkedIdsByScope.has(scope)) linkedIdsByScope.set(scope, new Set());
+    const linkedEntryIds = linkedIdsByScope.get(scope);
+    const previousLinkedCount = linkedEntryIds.size;
+    const fragment = createGlossaryFragment(textNode.nodeValue, linkedEntryIds);
+    if (linkedEntryIds.size > previousLinkedCount) textNode.replaceWith(fragment);
   });
 }

@@ -44,3 +44,24 @@ test('hyphenated document terminology is recognized', () => {
     ['denial-of-service', 'packet-loss'],
   );
 });
+
+test('each glossary entry is linked only once in a text block', () => {
+  const text = 'A client sends packets. The same client sends another packet.';
+  assert.deepEqual(termIds(text), ['client', 'packet']);
+  assert.equal(
+    findGlossaryMatches(text).map((segment) => segment.text).join(''),
+    text,
+  );
+});
+
+test('aliases share the same once-per-block glossary identity', () => {
+  assert.deepEqual(
+    termIds('One client connects while other clients wait for the client.'),
+    ['client'],
+  );
+});
+
+test('separate text blocks can link the same entry independently', () => {
+  assert.deepEqual(termIds('The server receives network traffic.'), ['server', 'network-traffic']);
+  assert.deepEqual(termIds('The server responds.'), ['server']);
+});

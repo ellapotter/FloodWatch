@@ -6,6 +6,11 @@ import {
   missions,
 } from '../panels/missionCardPanel.js';
 import { createNavigationPanel } from '../panels/navigationPanel.js';
+import {
+  createIcon,
+  decorateHeading,
+  gameFlowIconMappings,
+} from '../icons/iconSystem.js';
 
 const gameSteps = [
   ['Observe', 'Watch how the network behaves.'],
@@ -43,7 +48,7 @@ export function renderHomePage() {
       <section class="panel" aria-labelledby="flow-title">
         <h2 id="flow-title">Game Flow Overview</h2>
         <ol class="game-flow">
-          ${gameSteps.map(([title, description]) => `<li><strong>${title}</strong> – ${description}</li>`).join('')}
+          ${gameSteps.map(([title, description]) => `<li><span><strong>${title}</strong> – ${description}</span></li>`).join('')}
         </ol>
       </section>
     </aside>
@@ -52,6 +57,12 @@ export function renderHomePage() {
   const missionList = main.querySelector('.mission-list');
   missions.forEach((mission) => {
     missionList.append(createMissionCardPanel(mission, getMissionStatus(mission, progress)));
+  });
+  decorateHeading(main.querySelector('#flow-title'), 'eye');
+  main.querySelectorAll('.game-flow li').forEach((item) => {
+    const title = item.querySelector('strong')?.textContent;
+    const iconName = gameFlowIconMappings[title];
+    if (iconName) item.prepend(createIcon(iconName, { size: 18 }));
   });
   main.querySelector('.home-sidebar').append(createProgressPanel(progress));
   page.append(createNavigationPanel(), main);

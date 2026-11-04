@@ -1,9 +1,9 @@
-/** Player-facing investigation, reporting, and mitigation content for Level 1. */
+// Investigation, reporting, and mitigation content for Level 1.
 const missionId = 'syn-flood';
 
 // Creates an evidence item that is automatically tied to Level 1.
-function evidence(id, description) {
-  return { id, description, missionId };
+function evidence(id, description, sourceType, variant = 'default') {
+  return { id, description, missionId, sourceType, variant };
 }
 
 export const levelOneInvestigationContent = Object.freeze({
@@ -17,7 +17,7 @@ export const levelOneInvestigationContent = Object.freeze({
       'A client is a device that requests information or services from a server. To communicate with TCP, the client first establishes a connection through a process called a three-way handshake.',
     learnMore:
       'Network protocols are rules for how devices and different parts of the network communicate. TCP (Transmission Control Protocol) is a protocol that establishes a connection before transferring data. It uses the process of a three-way handshake to establish the connection and make sure the data is delivered reliably and in the correct order using sequence numbers and acknowledgements to keep track of the data being exchanged.',
-    evidence: evidence('client-communicating', 'Client communicating with the server'),
+    evidence: evidence('client-communicating', 'Client communicating with the server', 'client'),
   },
   synPacket: {
     title: 'SYN packet',
@@ -30,6 +30,7 @@ export const levelOneInvestigationContent = Object.freeze({
     evidence: evidence(
       'client-syn-request',
       'Client sends SYN packet to request a connection (Step 1)',
+      'packet',
     ),
   },
   synAckPacket: {
@@ -43,6 +44,7 @@ export const levelOneInvestigationContent = Object.freeze({
     evidence: evidence(
       'server-syn-ack-response',
       'Server responds with a SYN-ACK packet (Step 2)',
+      'packet',
     ),
   },
   ackPacket: {
@@ -56,6 +58,21 @@ export const levelOneInvestigationContent = Object.freeze({
     evidence: evidence(
       'client-ack-completes-connection',
       'Client sends an ACK packet, completing the TCP connection (Step 3)',
+      'packet',
+    ),
+  },
+  dataPacket: {
+    title: 'Data Packet',
+    details:
+      'This is a data packet traveling between a client and the web server. It contains information being exchanged after the TCP three-way handshake has successfully established a connection.',
+    meaning:
+      'Once the client and server have completed the three-way handshake, they can begin exchanging data through the established TCP connection. The client can send information or requests to the server, and the server can send responses back to the client. This communication continues until the connection is closed.',
+    learnMore:
+      'TCP allows devices to exchange data reliably after a connection has been established. Data is divided into smaller pieces called segments, which are transmitted across the network. TCP uses sequence numbers and acknowledgments to keep track of the data being exchanged, detect missing information, and ensure it is delivered in the correct order. When the devices are finished communicating, the TCP connection can be closed.',
+    evidence: evidence(
+      'established-connection-data',
+      'Client and server are exchanging data through an established TCP connection.',
+      'packet',
     ),
   },
   webServer: {
@@ -65,7 +82,11 @@ export const levelOneInvestigationContent = Object.freeze({
     meaning:
       'When a client requests a TCP connection, the server responds and waits for the handshake to finish. The server keeps track of these connections while also handling new requests from other clients.',
     learnMore: null,
-    evidence: evidence('server-connection-requests', 'Server handles connection requests from clients'),
+    evidence: evidence(
+      'server-connection-requests',
+      'Server handles connection requests from clients',
+      'server',
+    ),
   },
   suspiciousClient: {
     title: 'Suspicious Client',
@@ -75,7 +96,12 @@ export const levelOneInvestigationContent = Object.freeze({
       'Normally, a client completes the three-way handshake before exchanging data. This client keeps starting new connections without completing them, causing the server to keep track of multiple unfinished connection requests.',
     learnMore:
       'TCP keeps track of connections using connection states. After receiving a SYN and sending a SYN-ACK, the server normally enters the SYN-RECEIVED state while waiting for the final ACK. If too many connections remain in this state, they may use up resources needed to handle new requests.',
-    evidence: evidence('suspicious-client', 'Client is sending many SYN requests'),
+    evidence: evidence(
+      'suspicious-client',
+      'Client is sending many SYN requests',
+      'client',
+      'warning',
+    ),
   },
   waitingClient: {
     title: 'Waiting Client',
@@ -85,7 +111,12 @@ export const levelOneInvestigationContent = Object.freeze({
       'The client has sent a connection request but is still waiting for the connection to be established. The server is currently handling a large number of incomplete connection requests, which may be affecting its ability to accept new clients.',
     learnMore:
       'TCP uses retransmission timers to handle packets that may have been lost. If the client does not receive the expected response, it may retransmit its SYN packet. When a server becomes overwhelmed, clients may experience delays, failed connection attempts, or timeouts.',
-    evidence: evidence('client-connection-delays', 'Client is experiencing connection delays'),
+    evidence: evidence(
+      'client-connection-delays',
+      'Client is experiencing connection delays',
+      'client',
+      'warning',
+    ),
   },
   repeatedSynPacket: {
     title: 'Repeated SYN packet',
@@ -95,7 +126,12 @@ export const levelOneInvestigationContent = Object.freeze({
       'SYN packets are normally used to begin TCP connections. However, when the client does not send the final ACK packet, the connection is never established.',
     learnMore:
       'TCP uses the SYN flag to begin connection establishment. A server that receives a SYN normally responds with a SYN-ACK and waits for the final ACK. While waiting, it may temporarily store information about the incomplete connection.',
-    evidence: evidence('repeated-syn', 'High number of new SYN requests'),
+    evidence: evidence(
+      'repeated-syn',
+      'High number of new SYN requests',
+      'packet',
+      'warning',
+    ),
   },
 });
 
