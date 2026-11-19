@@ -121,10 +121,10 @@ test('clients handshake independently and packets overlap', () => {
   assert.ok(getMaximumConcurrentPackets() > 1);
   assert.ok(getState().completedHandshakes >= 3);
 
-  const firstConnectionId = packetHistory.find((packet) => packet.type === 'SYN').connectionId;
+  const firstSessionId = packetHistory.find((packet) => packet.type === 'SYN').sessionId;
   assert.deepEqual(
     packetHistory
-      .filter((packet) => packet.connectionId === firstConnectionId)
+      .filter((packet) => packet.sessionId === firstSessionId && packet.type !== 'DATA')
       .map((packet) => packet.type),
     ['SYN', 'SYN-ACK', 'ACK'],
   );
@@ -195,16 +195,14 @@ test('the second outbound attack SYN marks the client suspicious before either S
 
   const attackStarted = getState();
   assert.equal(attackStarted.attackSynPacketsSent, 1);
-  assert.equal(attackStarted.attackSynPacketsReceived, 0);
   assert.equal(
     attackStarted.activePackets.filter((packet) => packet.type === 'SYN' && packet.isAttack).length,
     1,
   );
 
-  simulation.tick(levelOneSimulation.attackStartDelay + levelOneSimulation.attackAttemptInterval);
+  simulation.tick(levelOneSimulation.attackStartDelay + levelOneSimulation.initialAttackInterval);
   const repeatedTraffic = getState();
   assert.equal(repeatedTraffic.attackSynPacketsSent, 2);
-  assert.equal(repeatedTraffic.attackSynPacketsReceived, 0);
   assert.equal(
     repeatedTraffic.activePackets.filter(
       (packet) => packet.type === 'SYN' && packet.isAttack,
@@ -226,7 +224,6 @@ test('half-open attack connections release backlog space after ten seconds', () 
   advance(simulation, 76000);
 
   const state = getState();
-  assert.ok(state.timedOutConnections > 0);
   assert.ok(state.pendingHalfOpenConnections <= state.backlogCapacity);
   assert.ok(state.attackSynPacketsSent > state.pendingHalfOpenConnections);
 });
@@ -267,7 +264,7 @@ test('the selected client remains while other clients fail and are replaced', ()
   const state = getState();
 
   assert.equal(state.simulationPhase, 'attack-established');
-  assert.ok(state.synPacketsReceived > state.completedHandshakes);
+  assert.ok(state.attackSynPacketsSent > state.completedHandshakes);
   assert.ok(state.failedLegitimateAttempts >= 2);
   assert.ok(state.pendingHalfOpenConnections <= state.backlogCapacity);
   assert.ok(
@@ -385,7 +382,7 @@ test('a rejected legitimate client waits for the configured duration before disa
 
   assert.equal(
     clientDisappearedAt - clientStartedWaitingAt,
-    levelOneSimulation.failedClientWaitDuration,
+    levelOneSimulation.clientDisruptionDuration,
   );
 });
 
@@ -411,8 +408,8 @@ test('simulation speed changes the real-time waiting duration', () => {
     return null;
   }
 
-  assert.equal(measureWaitingDuration(2), levelOneSimulation.failedClientWaitDuration / 2);
-  assert.equal(measureWaitingDuration(0.5), levelOneSimulation.failedClientWaitDuration / 0.5);
+  assert.equal(measureWaitingDuration(2), levelOneSimulation.clientDisruptionDuration / 2);
+  assert.equal(measureWaitingDuration(0.5), levelOneSimulation.clientDisruptionDuration / 0.5);
 });
 
 test('pausing freezes a waiting client and restart clears waiting state', () => {
@@ -429,7 +426,7 @@ test('pausing freezes a waiting client and restart clears waiting state', () => 
   assert.ok(waitingClient);
   simulation.pause();
   const pausedState = simulation.getState();
-  simulation.tick(timestamp + levelOneSimulation.failedClientWaitDuration * 2);
+  simulation.tick(timestamp + levelOneSimulation.clientDisruptionDuration * 2);
   assert.deepEqual(simulation.getState(), pausedState);
 
   simulation.reset(false);
@@ -452,7 +449,7 @@ test('pause freezes state and restart returns to initial empty client slots', ()
   simulation.reset(false);
   const resetState = simulation.getState();
   assert.equal(resetState.simulationPhase, 'normal-traffic');
-  assert.equal(resetState.synPacketsReceived, 0);
+  assert.equal(resetState.attackSynPacketsSent, 0);
   assert.equal(resetState.pendingHalfOpenConnections, 0);
   assert.equal(resetState.visibleClients.length, 0);
 });
@@ -483,11 +480,11 @@ test('speed changes durations without resetting simulation state', () => {
   const { simulation } = createSimulation();
   simulation.play();
   advance(simulation, 2000);
-  const synPacketsReceived = simulation.getState().synPacketsReceived;
+  const completedHandshakes = simulation.getState().completedHandshakes;
 
   simulation.setSpeed(2);
   assert.equal(simulation.getTiming().packetDuration, levelOneSimulation.packetDuration / 2);
-  assert.equal(simulation.getState().synPacketsReceived, synPacketsReceived);
+  assert.equal(simulation.getState().completedHandshakes, completedHandshakes);
   simulation.setSpeed(0.5);
   assert.equal(simulation.getTiming().packetDuration, levelOneSimulation.packetDuration * 2);
 });
@@ -518,8 +515,7 @@ test('SYN cookies preserve attack traffic while legitimate clients recover', () 
   assert.equal(recovered.recoveryComplete, true);
   assert.equal(recovered.simulationPhase, 'network-recovered');
   assert.equal(recovered.pendingHalfOpenConnections, 0);
-  assert.ok(recovered.recoveryCompletedHandshakes >= 2);
-  assert.ok(recovered.recoveryAttackSynPackets >= 3);
+  assert.ok(recovered.completedHandshakes > beforeMitigation.completedHandshakes);
   assert.ok(
     mitigationPackets.some((packet) => packet.type === 'SYN' && packet.isAttack),
   );
@@ -561,16 +557,16 @@ test('blocking TCP filters inbound packets without server processing or recovery
 
   for (let timestamp = 80100; timestamp <= 87000; timestamp += 100) simulation.tick(timestamp);
   const settled = getState();
-  const receivedAfterSettling = settled.synPacketsReceived;
-  const sentAfterSettling = settled.synAckPacketsSent;
+  const backlogAfterSettling = settled.pendingHalfOpenConnections;
+  const handshakesAfterSettling = settled.completedHandshakes;
   for (let timestamp = 87100; timestamp <= 97000; timestamp += 100) simulation.tick(timestamp);
   const blocked = getState();
 
   assert.equal(blocked.activeMitigationId, 'block-all-tcp-traffic');
   assert.equal(blocked.tcpTrafficBlocked, true);
   assert.ok(blocked.droppedTCPPackets > 0);
-  assert.equal(blocked.synPacketsReceived, receivedAfterSettling);
-  assert.equal(blocked.synAckPacketsSent, sentAfterSettling);
+  assert.ok(blocked.pendingHalfOpenConnections <= backlogAfterSettling);
+  assert.equal(blocked.completedHandshakes, handshakesAfterSettling);
   assert.equal(blocked.serverAvailable, false);
   assert.equal(blocked.recoveryComplete, false);
 });

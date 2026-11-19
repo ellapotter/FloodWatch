@@ -15,6 +15,8 @@ import {
   markMissionCompleted,
   missions,
   resetProgress,
+  saveProgress,
+  unlockAllLevels,
 } from '../src/panels/missionCardPanel.js';
 
 const storage = new Map();
@@ -73,4 +75,37 @@ test('completing Level 1 unlocks only Level 2 and persists idempotently', () => 
 
   resetProgress();
   assert.deepEqual(loadProgress().completedMissionIds, []);
+});
+
+test('developer unlock makes every mission available without completing them', () => {
+  storage.clear();
+  const progress = unlockAllLevels();
+  const statuses = missions.map((mission) => getMissionStatus(mission, progress));
+
+  assert.deepEqual(progress.completedMissionIds, []);
+  assert.equal(progress.allLevelsUnlocked, true);
+  assert.deepEqual(statuses, missions.map(() => 'Available'));
+
+  markMissionCompleted('syn-flood');
+  const updatedProgress = loadProgress();
+  assert.equal(updatedProgress.allLevelsUnlocked, true);
+  assert.equal(getMissionStatus(missions[0], updatedProgress), 'Completed');
+  assert.equal(getMissionStatus(missions[4], updatedProgress), 'Available');
+
+  resetProgress();
+  assert.equal(loadProgress().allLevelsUnlocked, undefined);
+});
+
+test('progress saves fail safely when browser storage is unavailable', () => {
+  const originalSetItem = global.localStorage.setItem;
+  global.localStorage.setItem = () => {
+    throw new Error('Storage unavailable');
+  };
+
+  const progress = { completedMissionIds: ['syn-flood'] };
+  try {
+    assert.equal(saveProgress(progress), progress);
+  } finally {
+    global.localStorage.setItem = originalSetItem;
+  }
 });

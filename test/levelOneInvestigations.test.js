@@ -6,30 +6,52 @@ import { levelOneReport } from '../src/game/levels/levelOneContent.js';
 import {
   getLevelOneInvestigation,
   resolveLevelOneSelection,
+  shouldHintLevelOneClient,
+  shouldHintLevelOnePacket,
 } from '../src/game/levels/levelOneMission.js';
 import {
   getClientPresentation,
+  getNetworkDiagramDescription,
   getPacketVisualPosition,
 } from '../src/panels/networkObserverPanel.js';
 
 const simulationState = {
   pendingHalfOpenConnections: 4,
   backlogCapacity: 5,
-  synPacketsReceived: 20,
   completedHandshakes: 4,
   failedLegitimateAttempts: 2,
   attackEvidenceObserved: true,
 };
 
-test('replaced clients are cleared while completed packet investigations remain open', () => {
+test('network diagram descriptions remain useful without revealing mission behavior', () => {
+  assert.equal(getNetworkDiagramDescription({ clients: [{}, {}, {}] }),
+    'Interactive network diagram with 3 clients and one server. Select a device or packet to investigate.');
+});
+
+test('Level 1 hints mark only the suspicious client and repeated attack SYN packets', () => {
+  assert.equal(shouldHintLevelOneClient({ behavior: 'suspicious' }), true);
+  assert.equal(shouldHintLevelOneClient({ behavior: 'waiting' }), false);
+  assert.equal(shouldHintLevelOnePacket(
+    { type: 'SYN', isAttack: true }, { attackSynPacketsSent: 1 },
+  ), false);
+  assert.equal(shouldHintLevelOnePacket(
+    { type: 'SYN', isAttack: true }, { attackSynPacketsSent: 2 },
+  ), true);
+  assert.equal(shouldHintLevelOnePacket(
+    { type: 'SYN-ACK', isAttack: true }, { attackSynPacketsSent: 3 },
+  ), false);
+});
+
+test('completed client and packet investigations remain open after objects disappear', () => {
   const state = {
     visibleClients: [{ id: 'client-new', state: 'connecting', behavior: 'normal' }],
     activePackets: [{ id: 'packet-new', type: 'SYN' }],
   };
 
-  assert.equal(resolveLevelOneSelection({
+  const completedClient = {
     kind: 'client', client: { id: 'client-old' },
-  }, state), null);
+  };
+  assert.deepEqual(resolveLevelOneSelection(completedClient, state), completedClient);
   const completedPacket = {
     kind: 'packet',
     packet: {
@@ -227,10 +249,10 @@ test('packet content distinguishes normal SYN from repeated SYN behavior', () =>
   ]);
 });
 
-test('server and backlog investigations use live simulation values', () => {
+test('server and backlog investigations share the server explanation', () => {
   const server = getLevelOneInvestigation({ kind: 'server' }, simulationState);
   const backlog = getLevelOneInvestigation({ kind: 'backlog' }, simulationState);
-  assert.deepEqual(server.dynamicFacts[0], ['Pending connections', '4 / 5']);
+  assert.deepEqual(server.dynamicFacts, []);
   assert.deepEqual(backlog.dynamicFacts, server.dynamicFacts);
 });
 

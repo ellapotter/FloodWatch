@@ -10,7 +10,7 @@ export const levelOneInvestigationContent = Object.freeze({
   client: {
     title: 'Client',
     connectedDetails:
-      'This is a client trying to communicate with the web server. It is currently connected and sending data to the server',
+      'This is a client trying to communicate with the web server. (It is currently connected and sending data to the server)',
     connectingDetails:
       'This is a client trying to communicate with the web server. It is currently attempting to connect to the server through a three-way handshake.',
     meaning:
@@ -182,11 +182,6 @@ export const levelOneReport = {
 export const levelOneMitigations = {
   missionId,
   correctChoiceId: 'enable-syn-cookies',
-  identifiedAttack: {
-    name: 'SYN Flood',
-    description:
-      'An attack that sends a large number of TCP connection requests without completing the three-way handshake, causing the server to keep track of unfinished connections.',
-  },
   instructions:
     'Once the correct attack has been detected, the player will choose one of the following mitigation strategies. If correct, the network will go back to normal.',
   choices: [
