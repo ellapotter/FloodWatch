@@ -1,8 +1,9 @@
 
 import { createReportState } from '../game/gameEngine.js';
 import { setGlossaryText } from '../glossary/glossaryText.js';
+import { createEvidenceList } from './investigationPanel.js';
+import { renderChoiceCards } from './choiceCards.js';
 import {
-  createEvidenceIcon,
   decorateHeading,
   panelIconMappings,
 } from '../icons/iconSystem.js';
@@ -35,10 +36,12 @@ export function createReportAttackPanel({
 
   function showFeedback(result) {
     activeFeedback = result;
+    feedbackDialog.classList.toggle('is-correct', result.isCorrect);
+    feedbackDialog.classList.toggle('is-incorrect', !result.isCorrect);
     feedbackDialog.innerHTML = `
       <h2>${result.isCorrect ? 'Correct Identification' : 'Incorrect Identification'}</h2>
       <p></p>
-      <button type="button" class="feedback-action">
+      <button type="button" class="feedback-action ${result.isCorrect ? 'button--primary' : 'button--secondary'}">
         ${result.isCorrect ? 'Continue to Mitigation' : 'Review Choices'}
       </button>
     `;
@@ -62,7 +65,7 @@ export function createReportAttackPanel({
     section.innerHTML = `
       <div class="section-heading">
         <h2>Report Attack</h2>
-        <button class="report-close" type="button" aria-label="Close report and return to Network Observer">&times;</button>
+        <button class="report-close button--secondary" type="button" aria-label="Close report and return to Network Observer">&times;</button>
       </div>
       <p class="report-prompt"></p>
 
@@ -76,7 +79,7 @@ export function createReportAttackPanel({
           <legend>Select one attack</legend>
           <div class="attack-choices"></div>
         </fieldset>
-        <button class="submit-report" type="submit" ${!state.selectedChoiceId || state.isCorrect ? 'disabled' : ''}>
+        <button class="submit-report button--primary" type="submit" ${!state.selectedChoiceId || state.isCorrect ? 'disabled' : ''}>
           Submit Report
         </button>
       </form>
@@ -87,17 +90,10 @@ export function createReportAttackPanel({
     decorateHeading(section.querySelector('.section-heading h2'), panelIconMappings.report);
     const evidenceContent = section.querySelector('.report-evidence-content');
     if (evidenceItems.length) {
-      const list = document.createElement('ul');
-      list.className = 'evidence-list evidence-list--review';
-      evidenceItems.forEach((evidence) => {
-        const item = document.createElement('li');
-        const description = document.createElement('span');
-        description.className = 'evidence-list__description';
-        setGlossaryText(description, evidence.description);
-        item.append(createEvidenceIcon(evidence), description);
-        list.append(item);
-      });
-      evidenceContent.append(list);
+      evidenceContent.append(createEvidenceList(
+        evidenceItems,
+        'evidence-list evidence-list--review',
+      ));
     } else {
       const empty = document.createElement('p');
       empty.textContent = 'No evidence has been collected.';
@@ -105,32 +101,19 @@ export function createReportAttackPanel({
     }
 
     const choices = section.querySelector('.attack-choices');
-    configuration.choices.forEach((choice) => {
-      const card = document.createElement('div');
-      card.className = 'attack-choice';
-      const choiceLabel = document.createElement('label');
-      const input = document.createElement('input');
-      input.type = 'radio';
-      input.name = 'attack-choice';
-      input.value = choice.id;
-      input.checked = state.selectedChoiceId === choice.id;
-      const name = document.createElement('strong');
-      name.textContent = choice.name;
-      choiceLabel.append(input, name);
-      const description = document.createElement('p');
-      setGlossaryText(description, choice.description);
-      card.append(choiceLabel, description);
-      choices.append(card);
+    renderChoiceCards(choices, {
+      choices: configuration.choices,
+      inputName: 'attack-choice',
+      selectedChoiceId: state.selectedChoiceId,
+      cardClass: 'attack-choice',
+      includeDescriptions: true,
+      onSelect(choiceId) {
+        reportState.select(choiceId);
+        section.querySelector('.submit-report').disabled = false;
+      },
     });
 
     section.querySelector('.report-close').addEventListener('click', onClose);
-    section.querySelectorAll('input[name="attack-choice"]').forEach((input) => {
-      // Stores the selected attack and enables report submission.
-      input.addEventListener('change', () => {
-        reportState.select(input.value);
-        section.querySelector('.submit-report').disabled = false;
-      });
-    });
     // Checks the selected attack and opens the matching feedback dialog.
     section.querySelector('.report-form').addEventListener('submit', (event) => {
       event.preventDefault();

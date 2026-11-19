@@ -4,6 +4,7 @@
 import { createMitigationState } from '../game/gameEngine.js';
 import { setGlossaryText } from '../glossary/glossaryText.js';
 import { decorateHeading, panelIconMappings } from '../icons/iconSystem.js';
+import { renderChoiceCards } from './choiceCards.js';
 
 // Creates the mitigation choices and the panel that displays their results.
 export function createMitigationPanel({
@@ -14,6 +15,7 @@ export function createMitigationPanel({
   const section = document.createElement('section');
   const statusSection = document.createElement('section');
   const mitigationState = createMitigationState(configuration);
+  let displayedRecoveryState = 'inactive';
   section.className = 'panel mitigation-panel';
   statusSection.className = 'panel mitigation-status';
 
@@ -38,7 +40,7 @@ export function createMitigationPanel({
     statusSection.innerHTML = `
       <h2>Mitigation Result</h2>
       <p class="mitigation-feedback ${state.feedback.isCorrect ? 'feedback-correct' : ''}"></p>
-      ${state.isSuccessful ? '<button class="complete-mission" type="button">Complete Mission</button>' : ''}
+      ${state.isSuccessful ? '<button class="complete-mission button--primary" type="button">Complete Mission</button>' : ''}
     `;
     setGlossaryText(statusSection.querySelector('.mitigation-feedback'), state.feedback.message);
     decorateHeading(statusSection.querySelector('h2'), panelIconMappings.mitigation);
@@ -61,7 +63,7 @@ export function createMitigationPanel({
           <legend>Select one defense</legend>
           <div class="mitigation-choices"></div>
         </fieldset>
-        <button class="apply-mitigation" type="submit" ${!state.selectedChoiceId || state.isSuccessful ? 'disabled' : ''}>
+        <button class="apply-mitigation button--primary" type="submit" ${!state.selectedChoiceId || state.isSuccessful ? 'disabled' : ''}>
           Apply Mitigation
         </button>
       </form>
@@ -70,28 +72,15 @@ export function createMitigationPanel({
     setGlossaryText(section.querySelector('.mitigation-instructions'), configuration.instructions);
     decorateHeading(section.querySelector('.section-heading h2'), panelIconMappings.mitigation);
     const choices = section.querySelector('.mitigation-choices');
-    configuration.choices.forEach((choice) => {
-      const card = document.createElement('div');
-      card.className = 'mitigation-choice';
-      const choiceLabel = document.createElement('label');
-      const input = document.createElement('input');
-      input.type = 'radio';
-      input.name = 'mitigation-choice';
-      input.value = choice.id;
-      input.checked = state.selectedChoiceId === choice.id;
-      const name = document.createElement('strong');
-      name.textContent = choice.name;
-      choiceLabel.append(input, name);
-      card.append(choiceLabel);
-      choices.append(card);
-    });
-
-    section.querySelectorAll('input[name="mitigation-choice"]').forEach((input) => {
-      // Stores the newly selected defense and enables the Apply button.
-      input.addEventListener('change', () => {
-        mitigationState.select(input.value);
+    renderChoiceCards(choices, {
+      choices: configuration.choices,
+      inputName: 'mitigation-choice',
+      selectedChoiceId: state.selectedChoiceId,
+      cardClass: 'mitigation-choice',
+      onSelect(choiceId) {
+        mitigationState.select(choiceId);
         section.querySelector('.apply-mitigation').disabled = false;
-      });
+      },
     });
     // Checks the selected defense and displays its result.
     section.querySelector('.mitigation-form').addEventListener('submit', (event) => {
@@ -113,11 +102,16 @@ export function createMitigationPanel({
     // Restores the mitigation interface to its initial state.
     reset() {
       mitigationState.reset();
+      displayedRecoveryState = 'inactive';
       render();
       renderStatus();
     },
-    // Keeps the result controls current as the simulation recovery state changes.
-    setRecoveryState() {
+    // Rebuilds the result only when recovery changes.
+    // The simulation reports recovery on every frame, and replacing the button
+    // each frame removes it before a click can register.
+    setRecoveryState(recoveryState = 'inactive') {
+      if (recoveryState === displayedRecoveryState) return;
+      displayedRecoveryState = recoveryState;
       renderStatus();
     },
     getState: mitigationState.getState,

@@ -7,13 +7,42 @@
   background: #050b14;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --background: #050b14;
-  --surface: rgba(10, 27, 44, 0.72);
-  --border: rgba(85, 207, 255, 0.2);
-  --text: #e7f4ff;
-  --muted: #9eb1c3;
-  --accent: #43d9ff;
-  --accent-bright: #7ae7ff;
+  --color-canvas: #050b14;
+  --color-surface-primary: #0b1928;
+  --color-surface-supporting: #091522;
+  --color-surface-nested: #0d1d2d;
+  --color-border: #17364a;
+  --color-border-strong: #24506a;
+  --color-text: #e7f4ff;
+  --color-text-muted: #a9bed0;
+  --color-accent: #43d9ff;
+  --color-accent-strong: #7ae7ff;
+  --color-accent-ink: #031019;
+  --color-accent-surface: #0e3445;
+  --color-warning: #e8b85c;
+  --color-warning-surface: #251f13;
+  --color-success: #65dba0;
+  --color-success-surface: #10251f;
+  --color-danger: #e47777;
+  --color-danger-surface: #271619;
+  /* Compatibility aliases use the DESIGN.md tokens as their single source of truth. */
+  --background: var(--color-canvas);
+  --border: var(--color-border);
+  --text: var(--color-text);
+  --muted: var(--color-text-muted);
+  --accent: var(--color-accent);
+  --accent-bright: var(--color-accent-strong);
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-round: 999px;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
   --content-width: 1600px;
 }
 
@@ -49,31 +78,85 @@ h3 {
 
 button,
 .button-link {
+  min-height: 2.65rem;
   padding: 0.6rem 1rem;
-  border: 1px solid var(--accent);
-  border-radius: 0.25rem;
-  background: transparent;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-nested);
   color: var(--text);
   font: inherit;
+  font-weight: 650;
   cursor: pointer;
+  transition: background-color 140ms ease-out, border-color 140ms ease-out,
+    color 140ms ease-out, transform 140ms ease-out;
 }
 
 button:hover,
+.button-link:hover {
+  border-color: var(--accent);
+  background: #102536;
+}
+
 button:focus-visible,
-.button-link:hover,
-.button-link:focus-visible {
+.button-link:focus-visible,
+input:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 3px;
+}
+
+button:active,
+.button-link:active {
+  transform: translateY(1px);
+}
+
+.button--primary {
+  border-color: var(--accent);
   background: var(--accent);
-  color: var(--background);
+  color: var(--color-accent-ink);
+}
+
+.button--primary:hover,
+.button--primary:focus-visible {
+  border-color: var(--accent-bright);
+  background: var(--accent-bright);
+  color: var(--color-accent-ink);
+}
+
+.button--secondary {
+  background: transparent;
+}
+
+.button--danger {
+  border-color: var(--color-danger);
+  background: transparent;
+  color: #ffb5b5;
+}
+
+.button--danger:hover,
+.button--danger:focus-visible {
+  border-color: #ff9999;
+  background: var(--color-danger-surface);
+  color: #ffd4d4;
 }
 
 button:disabled {
   border-color: var(--border);
   color: var(--muted);
+  background: #08121d;
   cursor: not-allowed;
+  opacity: 0.7;
 }
 
 button:disabled:hover {
-  background: transparent;
+  background: #08121d;
   color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  .button-link {
+    transition: none;
+  }
 }
 

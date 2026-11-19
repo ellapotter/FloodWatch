@@ -8,6 +8,20 @@ import {
   panelIconMappings,
 } from '../icons/iconSystem.js';
 
+export function createEvidenceList(evidenceItems, className = 'evidence-list') {
+  const list = document.createElement('ul');
+  list.className = className;
+  list.append(...evidenceItems.map((evidence) => {
+    const item = document.createElement('li');
+    const description = document.createElement('span');
+    description.className = 'evidence-list__description';
+    setGlossaryText(description, evidence.description);
+    item.append(createEvidenceIcon(evidence), description);
+    return item;
+  }));
+  return list;
+}
+
 
 export function createInvestigationPanel({ onCollectEvidence, onClose }) {
   const section = document.createElement('section');
@@ -75,8 +89,8 @@ export function createInvestigationPanel({ onCollectEvidence, onClose }) {
 
     if (investigation.evidence?.available) {
       const evidence = document.createElement('div');
-      evidence.className = 'investigation-section';
-      evidence.innerHTML = '<button class="collect-evidence" type="button"></button>';
+      evidence.className = 'investigation-section investigation-evidence-action';
+      evidence.innerHTML = '<button class="collect-evidence button--primary" type="button"></button>';
       const collectButton = evidence.querySelector('.collect-evidence');
       collectButton.disabled = isCollected;
       collectButton.textContent = isCollected ? 'Evidence Collected' : 'Collect Evidence';
@@ -117,12 +131,14 @@ export function createEvidencePanel({ onReportAttack = () => {} } = {}) {
       <h2 id="evidence-title">Evidence Collected</h2>
     </div>
     <p class="evidence-empty">No evidence collected yet.</p>
+    <p class="evidence-requirement">Collect relevant evidence to unlock reporting.</p>
     <ul class="evidence-list"></ul>
-    <button class="report-attack" type="button">Report Attack</button>
+    <button class="report-attack button--primary" type="button">Report Attack</button>
   `;
 
   const emptyMessage = section.querySelector('.evidence-empty');
   const list = section.querySelector('.evidence-list');
+  const requirement = section.querySelector('.evidence-requirement');
   const reportButton = section.querySelector('.report-attack');
   decorateHeading(section.querySelector('#evidence-title'), panelIconMappings.evidence);
   reportButton.addEventListener('click', onReportAttack);
@@ -132,20 +148,14 @@ export function createEvidencePanel({ onReportAttack = () => {} } = {}) {
     // Replaces the displayed list with the evidence collected in the mission.
     update(evidenceItems) {
       emptyMessage.hidden = evidenceItems.length > 0;
-      list.replaceChildren(
-        ...evidenceItems.map((evidence) => {
-          const item = document.createElement('li');
-          const description = document.createElement('span');
-          description.className = 'evidence-list__description';
-          setGlossaryText(description, evidence.description);
-          item.append(createEvidenceIcon(evidence), description);
-          return item;
-        }),
-      );
+      section.classList.toggle('has-evidence', evidenceItems.length > 0);
+      list.replaceChildren(...createEvidenceList(evidenceItems).children);
     },
     // Enables reporting only when the mission's evidence requirements are satisfied.
     setReportEnabled(isEnabled) {
       reportButton.disabled = !isEnabled;
+      requirement.hidden = isEnabled;
+      section.classList.toggle('can-report', isEnabled);
     },
   };
 }

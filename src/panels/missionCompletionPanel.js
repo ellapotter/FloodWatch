@@ -15,18 +15,25 @@ export function createMissionCompletionPanel({
   section.className = 'panel mission-completion';
   section.hidden = true;
   section.innerHTML = `
-    <h1 id="mission-completed-title" tabindex="-1">Mission Completed</h1>
-    <section aria-labelledby="completion-attack-title">
+    <header class="mission-completion__header">
+      <p class="mission-completion__eyebrow">Network secured</p>
+      <h1 id="mission-completed-title" tabindex="-1">Mission Completed</h1>
+    </header>
+    <div class="mission-completion__summaries">
+    <section class="mission-completion__summary" aria-labelledby="completion-attack-title">
+      <span class="mission-completion__label">Attack Identified</span>
       <h2 id="completion-attack-title"></h2>
       <p data-summary="attack"></p>
     </section>
-    <section aria-labelledby="completion-defense-title">
+    <section class="mission-completion__summary" aria-labelledby="completion-defense-title">
+      <span class="mission-completion__label">Defense Applied</span>
       <h2 id="completion-defense-title"></h2>
       <p data-summary="defense"></p>
     </section>
+    </div>
     <div class="mission-completion__actions">
-      <button type="button" data-action="home">Return to Home</button>
-      ${onContinue ? '<button type="button" data-action="continue"></button>' : ''}
+      ${onContinue ? '<button class="button--primary" type="button" data-action="continue"></button>' : ''}
+      <button class="button--secondary" type="button" data-action="home">Return to Home</button>
     </div>
   `;
   section.setAttribute('role', 'region');

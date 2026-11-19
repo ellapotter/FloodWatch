@@ -29,7 +29,7 @@ export function renderHomePage() {
   main.className = 'page-layout home-layout';
   main.innerHTML = `
     <div class="home-primary">
-      <section class="panel" aria-labelledby="introduction-title">
+      <section class="panel home-introduction" aria-labelledby="introduction-title">
         <h1 id="introduction-title">You are a Network Defender</h1>
         <p>
           Your job is to monitor network traffic, identify attacks, and choose the right defense
@@ -38,7 +38,7 @@ export function renderHomePage() {
         </p>
       </section>
 
-      <section class="panel" aria-labelledby="missions-title">
+      <section class="panel home-missions" aria-labelledby="missions-title">
         <h2 id="missions-title">Mission Selection</h2>
         <div class="mission-list"></div>
       </section>

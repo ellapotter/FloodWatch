@@ -49,7 +49,7 @@ function createMissionTemplate(instructions) {
   main.className = 'page-layout mission-layout';
   main.innerHTML = `
     <section class="panel mission-instructions" aria-labelledby="instructions-title">
-      <h2 id="instructions-title">Mission Instructions</h2>
+      <h2 id="instructions-title">Mission Briefing</h2>
       <p></p>
     </section>
 
@@ -107,6 +107,15 @@ function renderConfiguredMission(definition) {
   let missionCompletion;
   let completionShown = false;
 
+  function clearInvestigation() {
+    selectedInvestigation = null;
+    selectedInvestigationRequest = null;
+    investigationPanel.clear();
+    runtime.clearSelection();
+    contextPanel?.setSelection?.(null);
+    runtimeContainer.classList.remove('is-investigating');
+  }
+
   // When mission is completed, progress is saved and the mission completion panel is shown
   function showMissionCompletion() {
     if (completionShown) return;
@@ -149,12 +158,7 @@ function renderConfiguredMission(definition) {
       ? definition.resolveSelection(selectedInvestigationRequest, state)
       : selectedInvestigationRequest;
     if (!resolvedRequest) {
-      selectedInvestigationRequest = null;
-      selectedInvestigation = null;
-      investigationPanel.clear();
-      runtime.clearSelection();
-      contextPanel?.setSelection?.(null);
-      runtimeContainer.classList.remove('is-investigating');
+      clearInvestigation();
       return;
     }
     const nextInvestigation = definition.getInvestigation(resolvedRequest, state);
@@ -178,8 +182,6 @@ function renderConfiguredMission(definition) {
 
   // Returns the panels and collected evidence to their starting state after player presses restart
   function resetMissionInterface() {
-    selectedInvestigation = null;
-    selectedInvestigationRequest = null;
     evidenceStore.clear();
     missionState.reset();
     completionShown = false;
@@ -188,9 +190,7 @@ function renderConfiguredMission(definition) {
     evidencePanel.setReportEnabled(canOpenReport(definition.report, []));
     contextPanel?.reset?.();
     if (contextPanel) contextPanel.element.hidden = false;
-    investigationPanel.clear();
-    runtime.clearSelection();
-    runtimeContainer.classList.remove('is-investigating');
+    clearInvestigation();
     reportPanel.reset();
     mitigationPanel.reset();
     main.classList.remove('is-mitigating');
@@ -234,7 +234,6 @@ function renderConfiguredMission(definition) {
     },
     // Records that the player correctly identified the attack.
     onCorrect() {
-      missionState.setStage('attack-reported');
       evidencePanel.element.hidden = true;
     },
     // Changes the page from investigation controls to mitigation controls.
@@ -242,10 +241,7 @@ function renderConfiguredMission(definition) {
       missionState.setStage('mitigating');
       missionInstructions.hidden = true;
       missionWorkspace.hidden = false;
-      investigationPanel.clear();
-      runtime.clearSelection();
-      contextPanel?.setSelection?.(null);
-      runtimeContainer.classList.remove('is-investigating');
+      clearInvestigation();
       main.classList.add('is-mitigating');
       if (contextPanel?.hideDuringMitigation) contextPanel.element.hidden = true;
       mitigationContainer.hidden = false;
@@ -261,9 +257,6 @@ function renderConfiguredMission(definition) {
       const evidenceItems = evidenceStore.getAll();
       if (!canOpenReport(definition.report, evidenceItems)) return;
 
-      if (!reportPanel.getState().isCorrect) {
-        missionState.setStage('reporting');
-      }
       reportPanel.open(evidenceItems);
     },
   });
@@ -280,18 +273,14 @@ function renderConfiguredMission(definition) {
     },
     // Closes the investigation and clears its selected network object.
     onClose() {
-      selectedInvestigation = null;
-      selectedInvestigationRequest = null;
-      investigationPanel.clear();
-      runtime.clearSelection();
-      contextPanel?.setSelection?.(null);
-      runtimeContainer.classList.remove('is-investigating');
+      clearInvestigation();
     },
   });
 
+  const settings = loadSettings();
   runtime = definition.createRuntime({
-    speedMultiplier: getSimulationSpeedMultiplier(loadSettings()),
-    hintsEnabled: loadSettings().hintsEnabled,
+    speedMultiplier: getSimulationSpeedMultiplier(settings),
+    hintsEnabled: settings.hintsEnabled,
     // Keeps the shared panels synchronized with the latest simulation state.
     onStateChange(state, recoveryState) {
       latestSimulationState = state;
