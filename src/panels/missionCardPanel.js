@@ -1,5 +1,4 @@
 import { levelOneMission } from '../game/levels/levelOneMission.js';
-//import { levelTwoMission } from '../game/levels/levelTwoMission.js';
 import {
   createIcon,
   decorateHeading,
@@ -22,7 +21,6 @@ export const missions = [
     level: 2,
     title: 'UDP Flood',
     description: 'Learn how a large amount of UDP traffic can overwhelm a network.',
-    definition: levelTwoMission,
   },
   {
     id: 'http-flood',
