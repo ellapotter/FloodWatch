@@ -86,10 +86,10 @@
   height: 3rem;
   margin-bottom: 0.9rem;
   place-items: center;
-  border: 1px solid rgba(67, 217, 255, 0.38);
+  border: 1px solid var(--color-secondary);
   border-radius: var(--radius-md);
-  background: #0d2938;
-  color: var(--accent-bright);
+  background: var(--color-secondary-surface);
+  color: var(--color-secondary-strong);
 }
 
 .panel {
@@ -146,7 +146,7 @@
 .mission-card__status {
   padding: 0.25rem 0.5rem;
   border-radius: var(--radius-round);
-  background: #102536;
+  background: var(--color-surface-hover);
   color: var(--muted);
   font-size: 0.75rem;
   font-weight: 750;
@@ -159,7 +159,7 @@
 }
 
 .mission-card--available .mission-card__status {
-  background: #0e3445;
+  background: var(--color-accent-surface);
   color: var(--accent-bright);
 }
 
@@ -169,7 +169,7 @@
 }
 
 .mission-card--locked {
-  background: #07111b;
+  background: var(--color-surface-disabled);
 }
 
 .mission-card--locked .mission-card__icon {
@@ -318,7 +318,7 @@
   gap: var(--space-5);
   padding-block: var(--space-4);
   border-color: var(--color-border);
-  background: #07131f;
+  background: var(--color-surface-supporting);
 }
 
 .mission-instructions h2 {
@@ -425,32 +425,32 @@
   border: 1px solid var(--color-warning);
   border-radius: var(--radius-round);
   background: var(--color-warning-surface);
-  color: #f4cf86;
+  color: var(--color-warning);
   font-size: 0.82rem;
   font-weight: 700;
 }
 
 .tcp-filter rect {
   fill: rgba(255, 140, 140, 0.12);
-  stroke: #ff8c8c;
+  stroke: var(--color-danger);
   stroke-width: 2;
 }
 
 .tcp-filter path {
   fill: none;
-  stroke: #ffb0b0;
+  stroke: var(--color-danger);
   stroke-width: 2;
   stroke-linecap: round;
 }
 
 .tcp-filter text {
-  fill: #ffb0b0;
+  fill: var(--color-danger);
   font-size: 11px;
   font-weight: 700;
 }
 
 .tcp-filter.is-active {
-  filter: drop-shadow(0 0 8px rgba(255, 140, 140, 0.75));
+  filter: drop-shadow(0 0 8px rgba(255, 112, 133, 0.75));
 }
 
 .section-heading {
@@ -494,7 +494,7 @@
 }
 
 .network-device .network-device__card {
-  fill: rgba(12, 29, 48, 0.96);
+  fill: var(--color-surface-primary);
   stroke: var(--accent);
   stroke-width: 2;
   filter: drop-shadow(0 5px 8px rgba(0, 0, 0, 0.32));
@@ -533,7 +533,7 @@
 .network-packet.investigable:focus .network-packet__body {
   stroke: var(--accent-bright);
   stroke-width: 3;
-  fill: #10283a;
+  fill: var(--color-surface-hover);
 }
 
 .network-device.investigable.is-selected .network-device__card {
@@ -570,35 +570,35 @@
 .network-device__icon rect,
 .network-device__icon path {
   fill: none;
-  stroke: #bcefff;
+  stroke: var(--color-accent-strong);
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
 .network-device__icon circle {
-  fill: #43d9ff;
+  fill: var(--color-accent);
   stroke: none;
 }
 
 .network-device__state-dot {
-  fill: #91a4b8;
+  fill: var(--color-text-muted);
   stroke: rgba(255, 255, 255, 0.28);
   stroke-width: 1;
 }
 
 .network-device.is-connected .network-device__state-dot,
 .network-device--server .network-device__state-dot {
-  fill: #65e6a5;
+  fill: var(--color-success);
 }
 
 .network-device.is-connecting .network-device__state-dot {
-  fill: #43d9ff;
+  fill: var(--color-accent);
 }
 
 .network-device.is-waiting .network-device__state-dot,
 .network-device--server.is-under-pressure .network-device__state-dot {
-  fill: #ffd166;
+  fill: var(--color-warning);
 }
 
 .network-device.is-hinted .network-device__state-dot {
@@ -621,14 +621,14 @@
 }
 
 .network-device .network-device__status {
-  fill: #91a4b8;
+  fill: var(--color-text-muted);
   font-size: 12px;
   font-weight: 700;
 }
 
 .network-device.is-waiting .network-device__status,
 .network-device--server.is-under-pressure .network-device__status {
-  fill: #ffd166;
+  fill: var(--color-warning);
 }
 
 .network-device.is-hinted .network-device__status {
@@ -637,11 +637,11 @@
 
 .network-device--server.is-recovering .network-device__status,
 .network-device--server.is-protected .network-device__status {
-  fill: #65e6a5;
+  fill: var(--color-success);
 }
 
 .network-packet .network-packet__body {
-  fill: rgba(7, 17, 31, 0.96);
+  fill: var(--color-surface-supporting);
   stroke: var(--accent-bright);
   stroke-width: 1.5;
   filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.32));
@@ -649,7 +649,7 @@
 
 .network-packet.is-client-bound .network-packet__body {
   fill: rgba(18, 47, 57, 0.96);
-  stroke: #65e6a5;
+  stroke: var(--color-success);
 }
 
 .network-packet.is-attack-traffic .network-packet__body {
@@ -659,16 +659,16 @@
 }
 
 .network-packet.is-attack-traffic .network-packet__type {
-  fill: #f4cf86;
+  fill: var(--color-warning);
 }
 
 .network-packet.uses-syn-cookie .network-packet__body {
   fill: rgba(21, 64, 52, 0.97);
-  stroke: #65e6a5;
+  stroke: var(--color-success);
 }
 
 .network-packet.will-be-blocked .network-packet__body {
-  stroke: #ff8c8c;
+  stroke: var(--color-danger);
   stroke-dasharray: 4 3;
 }
 
@@ -783,7 +783,7 @@
   width: fit-content;
   padding: 0.18rem 0.45rem;
   border-radius: var(--radius-round);
-  background: #102536;
+  background: var(--color-surface-hover);
   color: var(--muted);
   font-size: 0.75rem;
   font-weight: 750;
@@ -791,7 +791,7 @@
 
 .statistics-status[data-tone="warning"] {
   background: var(--color-warning-surface);
-  color: #f4cf86;
+  color: var(--color-warning);
 }
 
 .statistics-status[data-tone="success"] {
@@ -805,13 +805,13 @@
   overflow: hidden;
   border: 0;
   border-radius: var(--radius-round);
-  background: #050d16;
+  background: var(--color-canvas);
   accent-color: var(--accent);
 }
 
 .statistics-capacity::-webkit-progress-bar {
   border-radius: var(--radius-round);
-  background: #050d16;
+  background: var(--color-canvas);
 }
 
 .statistics-capacity::-webkit-progress-value {
@@ -850,24 +850,24 @@
   place-items: center;
   border: 1px solid currentColor;
   border-radius: var(--radius-sm);
-  background: rgba(87, 132, 184, 0.1);
-  color: #79aee8;
+  background: var(--color-secondary-surface);
+  color: var(--color-secondary-strong);
 }
 
 .evidence-icon[data-category="packet"] {
-  background: rgba(123, 134, 238, 0.11);
-  color: #a7b5ff;
+  background: var(--color-accent-surface);
+  color: var(--color-accent-strong);
 }
 
 .evidence-icon[data-category="server"],
 .evidence-icon[data-category="backlog"] {
-  background: rgba(171, 129, 224, 0.11);
-  color: #c7a7ee;
+  background: var(--color-secondary-surface);
+  color: var(--color-secondary);
 }
 
 .evidence-icon[data-variant="warning"] {
-  background: rgba(255, 209, 102, 0.1);
-  color: #ffd166;
+  background: var(--color-warning-surface);
+  color: var(--color-warning);
 }
 
 .evidence-icon__secondary {
@@ -877,7 +877,7 @@
   padding: 0.1rem;
   border-radius: var(--radius-round);
   background: var(--color-surface-supporting);
-  color: #ffd166;
+  color: var(--color-warning);
 }
 
 .report-attack {
@@ -894,7 +894,7 @@
 }
 
 .evidence-panel.can-report {
-  border-color: #285541;
+  border-color: var(--color-success);
 }
 
 .investigation-section p,
@@ -1075,7 +1075,7 @@
 .attack-choice:hover,
 .mitigation-choice:hover {
   border-color: var(--color-border-strong);
-  background: #102536;
+  background: var(--color-surface-hover);
 }
 
 .attack-choice:focus-within,
@@ -1087,7 +1087,7 @@
 .attack-choice:has(input:checked),
 .mitigation-choice:has(input:checked) {
   border-color: var(--accent);
-  background: #0d2938;
+  background: var(--color-accent-surface);
 }
 
 .choice-heading {
@@ -1137,7 +1137,7 @@
 }
 
 .feedback-dialog.is-incorrect h2 {
-  color: #f4cf86;
+  color: var(--color-warning);
 }
 
 .feedback-action {
@@ -1321,7 +1321,7 @@
 .help-topic-buttons button:focus-visible,
 .help-topic-buttons button.is-active {
   border-color: var(--accent);
-  background: #0d2938;
+  background: var(--color-accent-surface);
   color: var(--text);
 }
 
@@ -1393,8 +1393,8 @@
   height: 1.6rem;
   place-items: center;
   border-radius: 50%;
-  background: rgba(67, 217, 255, 0.13);
-  color: var(--accent-bright);
+  background: var(--color-secondary-surface);
+  color: var(--color-secondary-strong);
   font-weight: 800;
 }
 
@@ -1403,7 +1403,7 @@
   width: 1.8rem;
   height: 1.8rem;
   place-items: center;
-  color: var(--accent-bright);
+  color: var(--color-secondary-strong);
 }
 
 .help-step-card h4,
@@ -1478,7 +1478,7 @@
 .help-device-symbol rect,
 .help-device-symbol path {
   fill: none;
-  stroke: #bcefff;
+  stroke: var(--color-accent-strong);
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -1753,7 +1753,7 @@
 .settings-options label:has(input:checked),
 .hint-setting:has(input:checked) {
   border-color: var(--accent);
-  background: #0d2938;
+  background: var(--color-accent-surface);
 }
 
 .settings-options input,
@@ -1822,7 +1822,7 @@
 }
 
 .reset-section {
-  background: #08121d;
+  background: var(--color-surface-disabled);
 }
 
 .settings-confirmation {
