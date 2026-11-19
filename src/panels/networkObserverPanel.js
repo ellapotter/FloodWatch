@@ -2,19 +2,25 @@
  * Renders a client/server diagram as an interactive SVG and
  * connects its controls and investigable objects to the mission page.
  */
-import { decorateHeading, panelIconMappings } from '../icons/iconSystem.js';
+import { createIcon, decorateHeading, panelIconMappings } from '../icons/iconSystem.js';
 
-export function getClientPresentation(client, showHints = false) {
+const defaultClientStatusLabels = Object.freeze({
+  waiting: 'Waiting...',
+  hinted: 'Review activity',
+  connected: 'Connected',
+  default: 'Connecting',
+});
+
+export function getClientPresentation(client, showHints = false, statusLabels = {}) {
   if (!client) return null;
+  const labels = { ...defaultClientStatusLabels, ...statusLabels };
   const isWaiting = client.behavior === 'waiting';
   const isSuspicious = client.behavior === 'suspicious';
   const statusLabel = isWaiting
-    ? 'Waiting...'
+    ? labels.waiting
     : isSuspicious && showHints
-      ? 'Review activity'
-      : client.state === 'connected'
-        ? 'Connected'
-        : 'Connecting';
+      ? labels.hinted
+      : labels[client.state] ?? labels.default;
   return {
     isWaiting,
     statusLabel,
@@ -45,6 +51,12 @@ export function getPacketVisualPosition(packet, diagram) {
   };
 }
 
+// Describes the diagram without revealing mission-specific behavior or attack clues.
+export function getNetworkDiagramDescription(diagram) {
+  const clientCount = diagram.clients.length;
+  return `Interactive network diagram with ${clientCount} client${clientCount === 1 ? '' : 's'} and one server. Select a device or packet to investigate.`;
+}
+
 
 export function createNetworkObserverPanel({
   diagram,
@@ -52,6 +64,11 @@ export function createNetworkObserverPanel({
   statusIndicator = null,
   isPacketInvestigable = () => true,
   shouldHintClient = () => false,
+  shouldHintPacket = () => false,
+  clientStatusLabels = {},
+  getServerState = () => ({ statusLabel: 'Online' }),
+  blockOverlayLabel = '',
+  attackPacketType = null,
   onStateChange,
   onInvestigate = () => {},
   onRestart = () => {},
@@ -84,40 +101,53 @@ export function createNetworkObserverPanel({
       <g class="tcp-filter" aria-hidden="true" hidden>
         <rect x="-9" y="-48" width="18" height="96" rx="7"></rect>
         <path d="M-4-16 4-16M-4-8 4-8M-4 0 4 0M-4 8 4 8M-4 16 4 16"></path>
-        <text y="65" text-anchor="middle">TCP Blocked</text>
+        <text class="traffic-block-label" y="65" text-anchor="middle"></text>
       </g>
       <g class="network-devices"></g>
     </svg>
     <div class="simulation-controls" aria-label="Simulation controls">
-      <button type="button" data-action="play" aria-pressed="false">Play</button>
-      <button type="button" data-action="pause" aria-pressed="false">Pause</button>
-      <button type="button" data-action="restart">Restart</button>
+      <button class="button--primary" type="button" data-action="play" aria-pressed="false">Play</button>
+      <button class="button--secondary" type="button" data-action="pause" aria-pressed="false">Pause</button>
+      <button class="button--secondary" type="button" data-action="restart">Restart</button>
     </div>
-    <span class="investigation-hover-hint" aria-hidden="true" hidden>🔍</span>
+    <span class="investigation-hover-hint" aria-hidden="true" hidden></span>
   `;
 
   section.querySelector('#observer-title').textContent = diagram.heading ?? 'Network Observer';
   decorateHeading(section.querySelector('#observer-title'), panelIconMappings.networkObserver);
   section.querySelector('#network-title').textContent = diagram.title;
-  section.querySelector('#network-description').textContent = diagram.description;
+  section.querySelector('#network-description').textContent = getNetworkDiagramDescription(diagram);
 
   const svgNamespace = 'http://www.w3.org/2000/svg';
   const linesGroup = section.querySelector('.connection-lines');
   const devicesGroup = section.querySelector('.network-devices');
   const packetsGroup = section.querySelector('.network-packets');
   const hoverHint = section.querySelector('.investigation-hover-hint');
+  hoverHint.append(createIcon('search', { size: 16 }));
   const observerStatusIndicator = section.querySelector('.observer-status-indicator');
   if (statusIndicator) {
     observerStatusIndicator.textContent = statusIndicator.label;
   }
   const clientSlotElements = [];
   const packetElements = new Map();
-  const tcpFilter = section.querySelector('.tcp-filter');
-  tcpFilter.setAttribute(
+  const blockOverlay = section.querySelector('.tcp-filter');
+  blockOverlay.querySelector('.traffic-block-label').textContent = blockOverlayLabel;
+  blockOverlay.setAttribute(
     'transform',
     `translate(${diagram.server.x - 105} ${diagram.server.y})`,
   );
   let showHints = hintsEnabled;
+  let latestSimulationState = null;
+
+  // Applies mission-defined packet hints to the packet nodes already on screen.
+  function updatePacketHints(state = latestSimulationState) {
+    packetElements.forEach((element) => {
+      element.classList.toggle(
+        'is-hinted',
+        Boolean(showHints && element.packetData && shouldHintPacket(element.packetData, state)),
+      );
+    });
+  }
 
   // Updates the reusable client positions from the latest simulation state.
   function renderClients(state) {
@@ -127,7 +157,7 @@ export function createNetworkObserverPanel({
 
     clientSlotElements.forEach((slotElements, slotIndex) => {
       const client = clientsBySlot.get(slotIndex);
-      const presentation = getClientPresentation(client, showHints);
+      const presentation = getClientPresentation(client, showHints, clientStatusLabels);
       const visibility = client ? 'visible' : 'hidden';
       if (client) {
         if (slotElements.label.textContent !== client.label) {
@@ -150,10 +180,17 @@ export function createNetworkObserverPanel({
         Boolean(client && showHints && shouldHintClient(client, state)),
       );
       slotElements.device.classList.toggle('is-waiting', presentation?.isWaiting === true);
-      slotElements.device.classList.toggle('is-connected', client?.state === 'connected');
+      slotElements.device.classList.toggle(
+        'is-connected',
+        ['connected', 'communicating'].includes(client?.state),
+      );
       slotElements.device.classList.toggle(
         'is-connecting',
-        Boolean(client && client.state !== 'connected' && !presentation?.isWaiting),
+        Boolean(
+          client
+          && !['connected', 'communicating'].includes(client.state)
+          && !presentation?.isWaiting,
+        ),
       );
       slotElements.statusLabel.textContent = presentation?.statusLabel ?? '';
       slotElements.statusLabel.setAttribute(
@@ -281,33 +318,13 @@ export function createNetworkObserverPanel({
   const serverStatus = serverDevice.querySelector('.network-device__status');
 
   function renderServer(state) {
-    const underPressure = state.pendingHalfOpenConnections
-      >= Math.ceil(state.backlogCapacity * 0.6);
-    const recoveryActive = state.synCookieProtectionActive && !state.recoveryComplete;
-    const backlogIncreased = state.activeMitigationId === 'increase-tcp-backlog';
-    const trafficBlocked = state.tcpTrafficBlocked === true;
-    serverDevice.classList.toggle(
-      'is-under-pressure',
-      (underPressure && !recoveryActive) || trafficBlocked,
-    );
-    serverDevice.classList.toggle('is-recovering', recoveryActive);
-    serverDevice.classList.toggle(
-      'is-protected',
-      state.synCookieProtectionActive,
-    );
-    serverStatus.textContent = trafficBlocked
-      ? 'TCP Traffic Blocked'
-      : state.synCookieProtectionActive
-        ? 'SYN Cookies Active'
-        : backlogIncreased
-          ? state.pendingHalfOpenConnections >= state.backlogCapacity
-            ? 'Backlog Full'
-            : 'Backlog Increased'
-          : underPressure
-            ? 'Backlog pressure'
-            : 'Online';
-    tcpFilter.toggleAttribute('hidden', !trafficBlocked);
-    tcpFilter.classList.toggle('is-active', state.blockedPacketIndicatorActive === true);
+    const presentation = getServerState(state);
+    serverDevice.classList.toggle('is-under-pressure', presentation.underPressure === true);
+    serverDevice.classList.toggle('is-recovering', presentation.recovering === true);
+    serverDevice.classList.toggle('is-protected', presentation.protected === true);
+    serverStatus.textContent = presentation.statusLabel;
+    blockOverlay.toggleAttribute('hidden', presentation.showBlockOverlay !== true);
+    blockOverlay.classList.toggle('is-active', presentation.blockOverlayActive === true);
   }
 
   const playButton = section.querySelector('[data-action="play"]');
@@ -350,11 +367,20 @@ export function createNetworkObserverPanel({
         element.dataset.objectId = packet.id;
         element.investigationContext = { kind: 'packet', packet };
       }
+      element.packetData = packet;
+      element.classList.toggle(
+        'is-hinted',
+        Boolean(showHints && shouldHintPacket(packet, latestSimulationState)),
+      );
       const position = getPacketVisualPosition(packet, diagram);
       element.classList.toggle('is-server-bound', packet.direction === 'client-to-server');
       element.classList.toggle('is-client-bound', packet.direction === 'server-to-client');
       element.classList.toggle('uses-syn-cookie', packet.usesSynCookie);
       element.classList.toggle('will-be-blocked', packet.willBeBlocked);
+      element.classList.toggle(
+        'is-attack-traffic',
+        Boolean(attackPacketType) && packet.isAttack === true && packet.type === attackPacketType,
+      );
       element.setAttribute('transform', `translate(${position.x} ${position.y})`);
       element.setAttribute(
         'aria-label',
@@ -379,6 +405,7 @@ export function createNetworkObserverPanel({
     onPacketsChange: renderPackets,
     
     onStateChange(state) {
+      latestSimulationState = state;
       playButton.classList.toggle('is-active', state.isPlaying);
       pauseButton.classList.toggle('is-active', !state.isPlaying);
       playButton.setAttribute('aria-pressed', state.isPlaying);
@@ -390,6 +417,7 @@ export function createNetworkObserverPanel({
       }
       section.querySelector('.network-diagram').classList.toggle('is-paused', !state.isPlaying);
       renderClients(state);
+      updatePacketHints(state);
       renderServer(state);
       onStateChange(state);
     },
@@ -421,10 +449,12 @@ export function createNetworkObserverPanel({
         element.classList.remove('is-selected');
       });
     },
-    // Turns mission-defined client hints on or off without restarting the simulation.
+    // Turns mission-defined client and packet hints on or off without restarting.
     setHints(isEnabled) {
       showHints = Boolean(isEnabled);
-      renderClients(simulation.getState());
+      latestSimulationState = simulation.getState();
+      renderClients(latestSimulationState);
+      updatePacketHints(latestSimulationState);
     },
   };
 }
