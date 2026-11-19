@@ -10,9 +10,9 @@ export const levelOneInvestigationContent = Object.freeze({
   client: {
     title: 'Client',
     connectedDetails:
-      'This is a client trying to communicate with the web server. (It is currently connected and sending data to the server)',
+      'This is a client trying to communicate with the web server. It is currently connected and sending data to the server',
     connectingDetails:
-      'This is a client trying to communicate with the web server. (It is currently attempting to connect to the server through a three-way handshake)',
+      'This is a client trying to communicate with the web server. It is currently attempting to connect to the server through a three-way handshake.',
     meaning:
       'A client is a device that requests information or services from a server. To communicate with TCP, the client first establishes a connection through a process called a three-way handshake.',
     learnMore:
@@ -142,7 +142,7 @@ export const levelOneReport = {
   requiredEvidenceIds: [],
   qualifyingEvidenceIds: ['repeated-syn', 'suspicious-client'],
   prompt:
-    'After collecting at least one relevant evidence item (Repeated SYN or Suspicious Client), the Report Attack button will become available. Once reported, the player will be given the following options.',
+    'After collecting at least one relevant evidence item , the Report Attack button will become available. Once reported, the player will be given the following options.',
   choices: [
     {
       id: 'syn-flood',

@@ -4,7 +4,6 @@
  * to know about TCP backlogs, SYN cookies, or Level 1 evidence rules.
  */
 import { createNetworkObserverPanel } from '../../panels/networkObserverPanel.js';
-import { createBacklogPanel } from '../../panels/backlogPanel.js';
 import { NetworkSimulation } from '../gameEngine.js';
 import { LevelOneSimulation } from './levelOneSimulation.js';
 import {
@@ -14,22 +13,20 @@ import {
 } from './levelOneContent.js';
 
 export const levelOneSimulation = Object.freeze({
-  backlogCapacity: 5,
-  increasedBacklogCapacity: 10,
-  blockedIndicatorDuration: 1200,
-  pendingConnectionTimeout: 10000,
-  packetDuration: 4000,
-  stepDelay: 750,
-  clientSpawnInterval: 4500,
-  dataPacketsPerConnection: 4,
-  failedClientWaitDuration: 12000,
-  replacementDelay: 1000,
-  attackAttemptInterval: 1000,
-  attackStartDelay: 60000,
-  repeatedSynEvidenceThreshold: 3,
-  pressureThreshold: 0.6,
-  recoveryAttackSynThreshold: 3,
-  recoveryHandshakeThreshold: 2,
+  backlogCapacity: 5, // The maximum number of pending half-open connections before the server starts dropping new SYN packets
+  increasedBacklogCapacity: 10, // The maximum number of pending half-open connections after the  increase backlog mitigation is applied
+  blockedIndicatorDuration: 1200, // The amount of time the blocked TCP indicator is shown after TCP is blocked by mitigation
+  pendingConnectionTimeout: 10000, // The amount of time a pending connection will wait before being dropped
+  packetDuration: 4000, // The amount of time it takes for a packet to travel from source to destination
+  stepDelay: 750, // The amount of time between data transfer and connection step
+  clientSpawnInterval: 4500, // The amount of time between each new client being spawned
+  dataPacketsPerConnection: 4, // The number of data packets sent after a connection is established
+  failedClientWaitDuration: 12000, // The amount of time a client waits before dropping after not recieving a reply back from the server
+  replacementDelay: 1000, // The amount of time after a client is dropped before a new one appears
+  attackAttemptInterval: 1000, // The amount of time between each SYN packet sent by the attacker
+  attackStartDelay: 60000, // The amount of time after the simulation starts before the attack begins
+  repeatedSynEvidenceThreshold: 3, // The number of repeated SYN packets that must be sent before the repeated SYN evidence is revealed
+  pressureThreshold: 0.6, // The percentage of the backlog capacity that must be filled before the pressure warning is revealed
 });
 
 // Creates the shared controller with Level 1's TCP simulation driver.
@@ -49,8 +46,6 @@ export function createLevelOneNetworkSimulation(options) {
 const levelOneDiagram = Object.freeze({
   heading: 'Network Observer',
   title: 'Client and web server network',
-  description:
-    'Three clients exchange labeled TCP packets with a web server. One client\'s behavior changes later in the simulation.',
   clients: [
     { id: 'client-1', label: 'Client 1', x: 110, y: 80 },
     { id: 'client-2', label: 'Client 2', x: 110, y: 210 },
@@ -58,6 +53,18 @@ const levelOneDiagram = Object.freeze({
   ],
   server: { id: 'web-server', label: 'Web Server', x: 790, y: 210 },
 });
+
+// If a client is suspicious and hints are on, it will be highlighted
+export function shouldHintLevelOneClient(client) {
+  return client.behavior === 'suspicious';
+}
+
+// If repeated SYN packets are sent and hints are on, they will be highlighted
+export function shouldHintLevelOnePacket(packet, state) {
+  return packet.type === 'SYN'
+    && packet.isAttack === true
+    && (state?.attackSynPacketsSent ?? 0) >= 2;
+}
 
 // Adds the selected object and current evidence state to investigation content.
 function withContext(definition, { objectId, dynamicFacts = [] }) {
@@ -74,18 +81,6 @@ function withContext(definition, { objectId, dynamicFacts = [] }) {
   };
 }
 
-// Builds the live server values shown in the investigation panel.
-function getServerFacts(state) {
-  if (!state) return [];
-  return [
-    ['Pending connections', `${state.pendingHalfOpenConnections} / ${state.backlogCapacity}`],
-    ['SYN packets received', state.synPacketsReceived],
-    ['Completed handshakes', state.completedHandshakes],
-    ['Failed connection attempts', state.failedLegitimateAttempts],
-  ];
-}
-
-// Describes the immutable endpoints captured when an animated packet was created.
 function getPacketFacts(packet) {
   return [
     ['Packet Type', packet.type],
@@ -98,10 +93,9 @@ function getPacketFacts(packet) {
 export function getLevelOneInvestigation(selection, state) {
   if (!selection) return null;
 
-  if (selection.kind === 'server' || selection.kind === 'backlog') {
+  if (selection.kind === 'server') {
     return withContext(content.webServer, {
       objectId: selection.kind,
-      dynamicFacts: getServerFacts(state),
     });
   }
 
@@ -155,45 +149,18 @@ const correctMitigation = levelOneMitigations.choices.find(
   (choice) => choice.id === levelOneMitigations.correctChoiceId,
 );
 
-// Creates the read-only server backlog panel used beside the observer.
-function createLevelOneBacklogPanel() {
-  const backlog = createBacklogPanel({
-    capacity: levelOneSimulation.backlogCapacity,
-    title: 'Server Backlog',
-    description: 'Simplified pending TCP connections',
-    countLabel: 'Pending Connections',
-    pressureThreshold: levelOneSimulation.pressureThreshold,
-    statusMessages: {
-      available: 'Capacity available',
-      pressure: 'Backlog under pressure',
-      full: 'Backlog full — new connection attempts may fail',
-    },
-    // Reads Level 1's pending TCP connection count from its simulation state.
-    getCount: (state) => state.pendingHalfOpenConnections ?? 0,
-    // Reads Level 1's configured TCP backlog capacity from its simulation state.
-    getCapacity: (state) => state.backlogCapacity ?? levelOneSimulation.backlogCapacity,
-  });
-
-  return {
-    element: backlog.element,
-    hideDuringMitigation: false,
-    update: backlog.update,
-  };
-}
-
-// Refreshes a selected client with the latest data from the simulation.
+// Keeps the investigation panel content even when the selected object is no longer visible
 export function resolveLevelOneSelection(selection, state) {
   if (selection?.kind === 'client') {
     const currentClient = state.visibleClients.find(
       (client) => client.id === selection.client.id,
     );
-    return currentClient ? { ...selection, client: currentClient } : null;
+    return currentClient ? { ...selection, client: currentClient } : selection;
   }
   if (selection?.kind === 'packet') {
     const currentPacket = state.activePackets.find(
       (packet) => packet.id === selection.packet.id,
     );
-    // Keep the captured packet snapshot available after its animation finishes.
     return currentPacket ? { ...selection, packet: currentPacket } : selection;
   }
   return selection;
@@ -202,24 +169,42 @@ export function resolveLevelOneSelection(selection, state) {
 export const levelOneMission = Object.freeze({
   id: 'syn-flood',
   instructions:
-    'Observe clients establish TCP connections using SYN, SYN-ACK, and ACK packets. Watch how incomplete handshakes affect the server\'s simplified pending-connection backlog.',
+    'Observe the network and watch as clients establish connections with the server. Watch how the connection process works and identify any potential issues.',
   statistics: [
-    { key: 'pendingHalfOpenConnections', label: 'Pending TCP connections' },
+    {
+      key: 'pendingHalfOpenConnections',
+      label: 'Pending TCP connections',
+      primary: true,
+      capacity: (state) => state.backlogCapacity
+        ? state.pendingHalfOpenConnections / state.backlogCapacity * 100
+        : 0,
+      status(state) {
+        if (state.synCookieProtectionActive) {
+          return { label: state.recoveryComplete ? 'Stable' : 'Recovering', tone: 'success' };
+        }
+        if (state.pendingHalfOpenConnections >= state.backlogCapacity) {
+          return { label: 'Full', tone: 'warning' };
+        }
+        if (state.pendingHalfOpenConnections >= Math.ceil(state.backlogCapacity * 0.6)) {
+          return { label: 'Increasing', tone: 'warning' };
+        }
+        return { label: 'Normal', tone: 'neutral' };
+      },
+    },
     { key: 'completedHandshakes', label: 'Successful connections' },
     { key: 'activeLegitimateConnections', label: 'Active connections' },
     { key: 'failedLegitimateAttempts', label: 'Failed connections' },
-    { key: 'droppedTCPPackets', label: 'Filtered TCP packets' },
   ],
   report: levelOneReport,
   mitigation: levelOneMitigations,
   getInvestigation: getLevelOneInvestigation,
   resolveSelection: resolveLevelOneSelection,
-  // Creates the Level 1 observer and exposes the controls used by the mission page.
+
+  // Creates the Level 1 observer
   createRuntime({ onStateChange, ...options }) {
     const observer = createNetworkObserverPanel({
       ...options,
       diagram: levelOneDiagram,
-      // Converts simulation recovery details into the shared mission recovery state.
       onStateChange(state) {
         const recoveryState = state.recoveryComplete
           ? 'complete'
@@ -245,32 +230,23 @@ export const levelOneMission = Object.freeze({
           return 'Backlog Capacity Increased';
         },
       },
-      // Level 1 hints identify the client whose repeated handshakes look suspicious.
-      shouldHintClient: (client) => client.behavior === 'suspicious',
+      shouldHintClient: shouldHintLevelOneClient,
+      shouldHintPacket: shouldHintLevelOnePacket,
     });
+
     return {
       element: observer.element,
-      // Starts or resumes the Level 1 simulation.
       play: () => observer.simulation.play(),
-      // Pauses the Level 1 simulation.
       pause: () => observer.simulation.pause(),
-      // Stops the simulation when the mission page is closed.
       destroy: () => observer.simulation.destroy(),
-      // Returns the latest Level 1 simulation state.
       getState: () => observer.simulation.getState(),
-      // Changes the simulation speed without resetting it.
       setSpeed: (multiplier) => observer.simulation.setSpeed(multiplier),
-      // Shows or hides optional investigation hints.
       setHints: observer.setHints,
-      // Highlights a selected network object in the observer.
       selectObject: observer.selectObject,
-      // Removes the observer's current selection.
       clearSelection: observer.clearSelection,
-      // Applies the selected Level 1 defense without exposing protocol logic to the page.
       applyMitigation: (choiceId) => observer.simulation.performAction(choiceId),
     };
   },
-  createContextPanel: createLevelOneBacklogPanel,
   completion: {
     attackName: correctReport.name,
     defenseName: 'Enable SYN Cookies',

@@ -1,162 +1,7 @@
 /**
- * Runs the event-driven Level 1 network simulation.
- * It owns clients, animated packets, attack phases, timing, and recovery while
- * TcpConnectionModel owns the simplified server-side TCP backlog.
+ * Runs the Level 1 network simulation.
+ * It owns clients, animated packets, a lightweight server backlog, timing, and recovery.
  */
-/** Models the server-side portion of Level 1's simplified TCP handshake. */
-export class TcpConnectionModel {
-  // Sets the backlog limits and prepares empty connection counters.
-  constructor({ backlogCapacity, pendingConnectionTimeout }) {
-    this.backlogCapacity = backlogCapacity;
-    this.pendingConnectionTimeout = pendingConnectionTimeout;
-    this.reset();
-  }
-
-  // Clears pending connections and resets every TCP counter.
-  reset() {
-    this.pendingConnections = new Map();
-    this.synCookieChallenges = new Map();
-    this.synPacketsReceived = 0;
-    this.synAckPacketsSent = 0;
-    this.completedHandshakes = 0;
-    this.failedLegitimateAttempts = 0;
-    this.timedOutConnections = 0;
-  }
-
-  // Changes the admission limit without discarding existing pending connections.
-  setBacklogCapacity(capacity) {
-    if (!Number.isInteger(capacity) || capacity < 1) return false;
-    this.backlogCapacity = capacity;
-    return true;
-  }
-
-  // Processes a SYN and reserves pending state when backlog space is available.
-  receiveSyn({
-    connectionId,
-    originId,
-    isAttacker,
-    receivedAt,
-    usesSynCookie = false,
-  }) {
-    this.synPacketsReceived += 1;
-
-    if (usesSynCookie) {
-      if (this.synCookieChallenges.has(connectionId)) {
-        return { accepted: false, reason: 'duplicate-connection' };
-      }
-      this.synCookieChallenges.set(connectionId, {
-        connectionId,
-        originId,
-        isAttacker,
-        creationTime: receivedAt,
-        handshakeStage: 'syn-received',
-      });
-      return { accepted: true, usesSynCookie: true, stateAllocated: false };
-    }
-
-    if (this.pendingConnections.size >= this.backlogCapacity) {
-      if (!isAttacker) this.failedLegitimateAttempts += 1;
-      return { accepted: false, reason: 'backlog-full' };
-    }
-
-    const connection = {
-      connectionId,
-      originId,
-      isAttacker,
-      creationTime: receivedAt,
-      handshakeStage: 'syn-received',
-      timeoutStatus: 'pending',
-    };
-    this.pendingConnections.set(connectionId, connection);
-    return { accepted: true, connection, stateAllocated: true };
-  }
-
-  // Records a SYN-ACK for a stored connection or SYN-cookie response.
-  sendSynAck(connectionId, { usesSynCookie = false } = {}) {
-    if (usesSynCookie) {
-      const challenge = this.synCookieChallenges.get(connectionId);
-      if (!challenge || challenge.handshakeStage !== 'syn-received') return false;
-      challenge.handshakeStage = 'syn-ack-sent';
-      this.synAckPacketsSent += 1;
-      return true;
-    }
-
-    const connection = this.pendingConnections.get(connectionId);
-    if (!connection || connection.handshakeStage !== 'syn-received') return false;
-    connection.handshakeStage = 'syn-ack-sent';
-    this.synAckPacketsSent += 1;
-    return true;
-  }
-
-  // Completes a legitimate handshake and releases its pending state.
-  completeHandshake(connectionId, { usesSynCookie = false, originId = null } = {}) {
-    if (usesSynCookie) {
-      const challenge = this.synCookieChallenges.get(connectionId);
-      if (
-        !challenge
-        || challenge.isAttacker
-        || challenge.handshakeStage !== 'syn-ack-sent'
-        || challenge.originId !== originId
-      ) {
-        return false;
-      }
-      this.synCookieChallenges.delete(connectionId);
-      this.completedHandshakes += 1;
-      return true;
-    }
-
-    const connection = this.pendingConnections.get(connectionId);
-    if (
-      !connection
-      || connection.isAttacker
-      || connection.handshakeStage !== 'syn-ack-sent'
-      || connection.originId !== originId
-    ) {
-      return false;
-    }
-    connection.handshakeStage = 'established';
-    this.pendingConnections.delete(connectionId);
-    this.completedHandshakes += 1;
-    return true;
-  }
-
-  // Expires half-open connections according to simulation time.
-  expirePendingConnections(currentTime) {
-    const expired = [];
-    this.pendingConnections.forEach((connection, connectionId) => {
-      if (currentTime - connection.creationTime < this.pendingConnectionTimeout) return;
-      connection.timeoutStatus = 'timed-out';
-      connection.handshakeStage = 'expired';
-      expired.push({ ...connection });
-      this.pendingConnections.delete(connectionId);
-      this.timedOutConnections += 1;
-    });
-    this.synCookieChallenges.forEach((challenge, connectionId) => {
-      if (currentTime - challenge.creationTime >= this.pendingConnectionTimeout) {
-        this.synCookieChallenges.delete(connectionId);
-      }
-    });
-    return expired;
-  }
-
-  // Returns a copy of the current TCP connection and counter data.
-  getState() {
-    return {
-      synPacketsReceived: this.synPacketsReceived,
-      synAckPacketsSent: this.synAckPacketsSent,
-      completedHandshakes: this.completedHandshakes,
-      pendingHalfOpenConnections: this.pendingConnections.size,
-      backlogCapacity: this.backlogCapacity,
-      failedLegitimateAttempts: this.failedLegitimateAttempts,
-      timedOutConnections: this.timedOutConnections,
-      pendingConnections: [...this.pendingConnections.values()].map((connection) => ({
-        ...connection,
-      })),
-    };
-  }
-}
-
-/** Controller for the Level 1 simulation clock and network events. */
 export class LevelOneSimulation {
   // Sets up the simulation clock, network objects, and update callbacks.
   constructor({
@@ -176,18 +21,78 @@ export class LevelOneSimulation {
     this.random = random;
     this.baseLegDuration = configuration.packetDuration;
     this.baseWaitDuration = configuration.stepDelay;
-    this.connectionModel = new TcpConnectionModel(configuration);
     this.animationFrameId = null;
     this.tick = this.tick.bind(this);
     this.setSpeed(speedMultiplier);
     this.reset(false);
   }
 
-  /**
-   * Changes how quickly simulation time advances without resetting current state.
-   * All event deadlines and packet animations use simulation time, so pause and speed
-   * changes affect the model and diagram consistently.
-   */
+  /** Restores the engine to its initial state and schedules the first client arrivals. */
+  reset(shouldPlay = true) {
+    cancelAnimationFrame(this.animationFrameId);
+    this.animationFrameId = null;
+    this.activeClients = new Map();
+    this.activePackets = new Map();
+    this.backlog = [];
+    this.backlogCapacity = this.configuration.backlogCapacity;
+    this.events = [];
+    this.isPlaying = false;
+    this.simulationPhase = 'normal-traffic';
+    this.simulationTime = 0;
+    this.lastTimestamp = null;
+    this.sessionSequence = 0;
+    this.nextClientNumber = 1;
+    this.packetSequence = 0;
+    this.compromisedSessionId = null;
+    this.selectedAttackSlot = null;
+    this.attackSynPacketsSent = 0;
+    this.completedHandshakes = 0;
+    this.failedLegitimateAttempts = 0;
+    this.synCookieProtectionActive = false;
+    this.activeMitigationId = null;
+    this.tcpTrafficBlocked = false;
+    this.droppedTCPPackets = 0;
+    this.blockedIndicatorUntil = 0;
+    this.recoveryComplete = false;
+    this.attackContinuedAfterMitigation = false;
+    this.protectedHandshakeCompleted = false;
+    this.statusMessage = 'Simulation ready. Clients will appear as they begin connecting.';
+    this.clientSlots.forEach((_, slotIndex) => {
+      this.schedule(slotIndex * this.configuration.clientSpawnInterval, 'spawn-client', {
+        slotIndex,
+      });
+    });
+    this.render();
+    if (shouldPlay) this.play();
+  }
+
+  // Starts or resumes the simulation clock and animation loop.
+  play() {
+    if (this.isPlaying) return;
+    this.isPlaying = true;
+    this.lastTimestamp = null;
+    this.processDueEvents();
+    this.render();
+    this.animationFrameId = requestAnimationFrame(this.tick);
+  }
+
+  // Stops the simulation clock without clearing its current state.
+  pause() {
+    if (!this.isPlaying) return;
+    this.isPlaying = false;
+    cancelAnimationFrame(this.animationFrameId);
+    this.animationFrameId = null;
+    this.render();
+  }
+
+  // Stops the animation loop when the mission page is closed.
+  destroy() {
+    this.isPlaying = false;
+    cancelAnimationFrame(this.animationFrameId);
+    this.animationFrameId = null;
+  }
+
+
   setSpeed(speedMultiplier) {
     const validMultiplier = Number.isFinite(speedMultiplier) && speedMultiplier > 0
       ? speedMultiplier
@@ -197,7 +102,7 @@ export class LevelOneSimulation {
     this.waitDuration = this.baseWaitDuration / validMultiplier;
   }
 
-  // Returns the current animation durations for settings and automated checks.
+  // Returns the current animation durations for settings and checks.
   getTiming() {
     return {
       packetDuration: this.legDuration,
@@ -220,22 +125,17 @@ export class LevelOneSimulation {
       return false;
     }
 
-    const modelState = this.connectionModel.getState();
     this.activeMitigationId = mitigationId;
     this.synCookieProtectionActive = mitigationId === 'enable-syn-cookies';
     this.tcpTrafficBlocked = mitigationId === 'block-all-tcp-traffic';
     this.recoveryComplete = false;
-    this.connectionModel.setBacklogCapacity(
-      mitigationId === 'increase-tcp-backlog'
-        ? this.configuration.increasedBacklogCapacity
-        : this.configuration.backlogCapacity,
-    );
+    this.backlogCapacity = mitigationId === 'increase-tcp-backlog'
+      ? this.configuration.increasedBacklogCapacity
+      : this.configuration.backlogCapacity;
 
     if (this.synCookieProtectionActive) {
-      this.recoveryBaseline = {
-        attackSynPacketsReceived: this.attackSynPacketsReceived,
-        completedHandshakes: modelState.completedHandshakes,
-      };
+      this.attackContinuedAfterMitigation = false;
+      this.protectedHandshakeCompleted = false;
       this.simulationPhase = 'mitigation-active';
       this.statusMessage = 'SYN cookie protection active. Continue watching or complete the mission.';
     } else if (this.tcpTrafficBlocked) {
@@ -247,6 +147,38 @@ export class LevelOneSimulation {
     }
     this.render();
     return true;
+  }
+
+  /** Returns a serializable snapshot consumed by mission components. */
+  getState() {
+    const visibleClients = this.getVisibleClients();
+    return {
+      clientCount: this.activeClients.size,
+      isPlaying: this.isPlaying,
+      simulationPhase: this.simulationPhase,
+      statusMessage: this.statusMessage,
+      visibleClients,
+      activeLegitimateConnections: visibleClients.filter(
+        (client) => client.state === 'connected' && client.behavior === 'normal',
+      ).length,
+      activePackets: this.getPackets(),
+      activePacketCount: this.activePackets.size,
+      attackClientSlot: this.selectedAttackSlot,
+      attackSynPacketsSent: this.attackSynPacketsSent,
+      attackEvidenceObserved:
+        this.attackSynPacketsSent >= this.configuration.repeatedSynEvidenceThreshold,
+      synCookieProtectionActive: this.synCookieProtectionActive,
+      activeMitigationId: this.activeMitigationId,
+      tcpTrafficBlocked: this.tcpTrafficBlocked,
+      droppedTCPPackets: this.droppedTCPPackets,
+      blockedPacketIndicatorActive: this.simulationTime < this.blockedIndicatorUntil,
+      serverAvailable: !this.tcpTrafficBlocked,
+      recoveryComplete: this.recoveryComplete,
+      pendingHalfOpenConnections: this.backlog.length,
+      backlogCapacity: this.backlogCapacity,
+      completedHandshakes: this.completedHandshakes,
+      failedLegitimateAttempts: this.failedLegitimateAttempts,
+    };
   }
 
   // Returns the clients that should currently appear in the network diagram.
@@ -276,7 +208,6 @@ export class LevelOneSimulation {
         id: packet.id,
         type: packet.type,
         sessionId: packet.sessionId,
-        connectionId: packet.connectionId ?? null,
         isAttack: packet.isAttack === true,
         usesSynCookie: packet.usesSynCookie === true,
         willBeBlocked: this.tcpTrafficBlocked && packet.destination.id === this.server.id,
@@ -296,50 +227,43 @@ export class LevelOneSimulation {
     });
   }
 
-  /** Returns a serializable snapshot consumed by mission components. */
-  getState() {
-    const visibleClients = this.getVisibleClients();
-    const connectionState = this.connectionModel.getState();
-    return {
-      clientCount: this.activeClients.size,
-      isPlaying: this.isPlaying,
-      simulationPhase: this.simulationPhase,
-      statusMessage: this.statusMessage,
-      visibleClients,
-      activeLegitimateConnections: visibleClients.filter(
-        (client) => client.state === 'connected' && client.behavior === 'normal',
-      ).length,
-      activePackets: this.getPackets(),
-      activePacketCount: this.activePackets.size,
-      attackClientSlot: this.selectedAttackSlot,
-      attackSynPacketsSent: this.attackSynPacketsSent,
-      attackSynPacketsReceived: this.attackSynPacketsReceived,
-      missingAttackAcksObserved: this.missingAttackAcksObserved,
-      attackEvidenceObserved:
-        this.attackSynPacketsReceived >= this.configuration.repeatedSynEvidenceThreshold
-        && this.missingAttackAcksObserved > 0,
-      synCookieProtectionActive: this.synCookieProtectionActive,
-      activeMitigationId: this.activeMitigationId,
-      tcpTrafficBlocked: this.tcpTrafficBlocked,
-      droppedTCPPackets: this.droppedTCPPackets,
-      blockedPacketIndicatorActive: this.simulationTime < this.blockedIndicatorUntil,
-      serverAvailable: !this.tcpTrafficBlocked,
-      recoveryComplete: this.recoveryComplete,
-      recoveryAttackSynPackets: this.synCookieProtectionActive
-        ? this.attackSynPacketsReceived - this.recoveryBaseline.attackSynPacketsReceived
-        : 0,
-      recoveryCompletedHandshakes: this.synCookieProtectionActive
-        ? connectionState.completedHandshakes
-          - this.recoveryBaseline.completedHandshakes
-        : 0,
-      ...connectionState,
-    };
-  }
-
   // Sends the latest packet and simulation data to the page components.
   render() {
     this.onPacketsChange(this.getPackets());
     this.onStateChange(this.getState());
+  }
+
+  /**
+   * Advances the simulation from requestAnimationFrame timestamps.
+   * Pausing cancels this loop, which also freezes packet progress and connection timeouts.
+   */
+  tick(timestamp) {
+    if (!this.isPlaying) return;
+    const elapsed = this.lastTimestamp === null ? 0 : timestamp - this.lastTimestamp;
+    this.lastTimestamp = timestamp;
+    this.simulationTime += elapsed * this.speedMultiplier;
+
+    const expiredCount = this.expireBacklogEntries();
+    if (expiredCount > 0) {
+      this.statusMessage = `${expiredCount} half-open connection${expiredCount === 1 ? '' : 's'} timed out; backlog space released.`;
+    }
+
+    this.processDueEvents();
+    this.maybeStartAttack();
+
+    const arrivedPackets = [];
+    this.activePackets.forEach((packet, packetId) => {
+      if (this.simulationTime - packet.startedAt >= packet.duration) {
+        arrivedPackets.push(packet);
+        this.activePackets.delete(packetId);
+      }
+    });
+    arrivedPackets.forEach((packet) => this.handlePacketArrival(packet));
+    this.updateSimulationPhase();
+    // Arrival handlers can schedule zero-delay follow-up work for the same frame.
+    this.processDueEvents();
+    this.render();
+    this.animationFrameId = requestAnimationFrame(this.tick);
   }
 
   /** Adds an event deadline expressed in simulation milliseconds. */
@@ -352,10 +276,52 @@ export class LevelOneSimulation {
     this.events.sort((first, second) => first.at - second.at);
   }
 
-  // Creates the next unique ID used to track one TCP handshake.
-  createConnectionId() {
-    this.connectionSequence += 1;
-    return `tcp-connection-${this.connectionSequence}`;
+  // Runs every scheduled action whose simulation deadline has passed.
+  processDueEvents() {
+    while (this.events.length > 0 && this.events[0].at <= this.simulationTime) {
+      this.handleEvent(this.events.shift());
+    }
+  }
+
+  // Handles one scheduled simulation action when its deadline is reached.
+  handleEvent(event) {
+    const client = event.sessionId
+      ? this.activeClients.get(event.sessionId)
+      : null;
+
+    if (event.type === 'spawn-client') {
+      this.spawnClient(event.slotIndex);
+    } else if (event.type === 'send-syn-ack') {
+      if (client) {
+        this.spawnPacket('SYN-ACK', this.server, client, event);
+      }
+    } else if (event.type === 'send-ack') {
+      if (client) this.spawnPacket('ACK', client, this.server, event);
+    } else if (event.type === 'send-data') {
+      if (
+        client?.state === 'connected'
+        && !client.compromised
+        && client.dataPacketsSent < this.configuration.dataPacketsPerConnection
+      ) {
+        client.dataPacketsSent += 1;
+        this.spawnPacket('DATA', client, this.server, { sessionId: client.id });
+      }
+    } else if (event.type === 'send-data-response') {
+      if (
+        client?.state === 'connected'
+        && !client.compromised
+        && client.dataPacketsSent < this.configuration.dataPacketsPerConnection
+      ) {
+        client.dataPacketsSent += 1;
+        this.spawnPacket('DATA', this.server, client, { sessionId: client.id });
+      }
+    } else if (event.type === 'end-session') {
+      if (client && !client.compromised) this.removeClient(client.id);
+    } else if (event.type === 'remove-client') {
+      if (client) this.removeClient(client.id, event.replace !== false);
+    } else if (event.type === 'attack-syn') {
+      this.beginAttackAttempt(client);
+    }
   }
 
   // Reserves the next number used in a client's visible label.
@@ -383,7 +349,6 @@ export class LevelOneSimulation {
       y: slot.y,
       state: 'connecting',
       compromised: false,
-      connectionId: null,
       dataPacketsSent: 0,
     };
     this.activeClients.set(client.id, client);
@@ -391,15 +356,27 @@ export class LevelOneSimulation {
     this.beginLegitimateHandshake(client);
   }
 
+  // Removes a client and optionally schedules a replacement for its slot.
+  removeClient(sessionId, replace = true) {
+    const client = this.activeClients.get(sessionId);
+    if (!client) return;
+    this.activeClients.delete(sessionId);
+    this.activePackets.forEach((packet, packetId) => {
+      if (packet.sessionId === sessionId) this.activePackets.delete(packetId);
+    });
+    this.events = this.events.filter((event) => event.sessionId !== sessionId);
+    if (replace) {
+      this.schedule(this.configuration.replacementDelay, 'spawn-client', {
+        slotIndex: client.slotIndex,
+      });
+    }
+  }
+
   // Starts a normal TCP handshake for a legitimate client.
   beginLegitimateHandshake(client) {
-    // Each attempt receives its own ID so its SYN, SYN-ACK, and ACK share backlog state.
-    const connectionId = this.createConnectionId();
-    client.connectionId = connectionId;
     client.state = 'connecting';
     this.spawnPacket('SYN', client, this.server, {
       sessionId: client.id,
-      connectionId,
       isAttack: false,
     });
   }
@@ -422,119 +399,11 @@ export class LevelOneSimulation {
     this.activePackets.set(packet.id, packet);
 
     if (type === 'SYN') {
-      this.statusMessage = `${metadata.connectionId}: ${source.label} sends SYN.`;
+      this.statusMessage = `${source.label} sends SYN.`;
     } else if (type === 'SYN-ACK') {
-      this.statusMessage = `${metadata.connectionId}: server sends SYN-ACK and waits for ACK.`;
+      this.statusMessage = 'Server sends SYN-ACK and waits for ACK.';
     } else if (type === 'ACK') {
-      this.statusMessage = `${metadata.connectionId}: ${source.label} sends the final ACK.`;
-    }
-  }
-
-  // Removes a client and optionally schedules a replacement for its slot.
-  removeClient(sessionId, replace = true) {
-    const client = this.activeClients.get(sessionId);
-    if (!client) return;
-    this.activeClients.delete(sessionId);
-    this.activePackets.forEach((packet, packetId) => {
-      if (packet.sessionId === sessionId) this.activePackets.delete(packetId);
-    });
-    this.events = this.events.filter((event) => event.sessionId !== sessionId);
-    if (replace) {
-      this.schedule(this.configuration.replacementDelay, 'spawn-client', {
-        slotIndex: client.slotIndex,
-      });
-    }
-  }
-
-  // Sends one attack SYN and schedules the compromised client to send another.
-  beginAttackAttempt(client) {
-    if (!client?.compromised) return;
-    const connectionId = this.createConnectionId();
-    this.attackSynPacketsSent += 1;
-    this.spawnPacket('SYN', client, this.server, {
-      sessionId: client.id,
-      connectionId,
-      isAttack: true,
-    });
-    this.schedule(this.configuration.attackAttemptInterval, 'attack-syn', {
-      sessionId: client.id,
-    });
-  }
-
-  /** Converts one randomly selected occupied client slot into the attack source. */
-  maybeStartAttack() {
-    if (this.simulationPhase !== 'normal-traffic') return;
-    if (this.simulationTime < this.configuration.attackStartDelay) return;
-
-    if (this.selectedAttackSlot === null) {
-      this.selectedAttackSlot = Math.floor(this.random() * this.clientSlots.length);
-    }
-
-    const changedClient = [...this.activeClients.values()].find(
-      (client) => client.slotIndex === this.selectedAttackSlot,
-    );
-    if (!changedClient) return;
-
-    changedClient.compromised = true;
-    changedClient.state = 'connecting';
-    this.compromisedSessionId = changedClient.id;
-    this.simulationPhase = 'attack-begins';
-    // Remove the client's legitimate work before starting repeated incomplete handshakes.
-    this.events = this.events.filter((event) => event.sessionId !== changedClient.id);
-    this.activePackets.forEach((packet, packetId) => {
-      if (packet.sessionId === changedClient.id) this.activePackets.delete(packetId);
-    });
-    this.statusMessage = `${changedClient.label} begins sending repeated connection requests.`;
-    this.schedule(0, 'attack-syn', { sessionId: changedClient.id });
-  }
-
-  // Updates the mission phase when backlog pressure or failures are observed.
-  updateSimulationPhase() {
-    if (this.synCookieProtectionActive) {
-      this.updateRecoveryState();
-      return;
-    }
-    if (this.simulationPhase === 'normal-traffic') return;
-    if (this.activeMitigationId && !this.synCookieProtectionActive) {
-      this.simulationPhase = 'mitigation-ineffective';
-      return;
-    }
-    const state = this.connectionModel.getState();
-    if (
-      state.pendingHalfOpenConnections >= state.backlogCapacity
-      || state.failedLegitimateAttempts > 0
-    ) {
-      this.simulationPhase = 'attack-established';
-    } else if (
-      state.pendingHalfOpenConnections
-      >= Math.ceil(state.backlogCapacity * this.configuration.pressureThreshold)
-    ) {
-      this.simulationPhase = 'backlog-pressure';
-    }
-  }
-
-  /**
-   * Declares recovery complete only after pending state drains and the protected
-   * server has handled both new attack traffic and new legitimate handshakes.
-   */
-  updateRecoveryState() {
-    if (!this.synCookieProtectionActive || this.recoveryComplete) return;
-    const state = this.connectionModel.getState();
-    const attackSynsSinceMitigation = this.attackSynPacketsReceived
-      - this.recoveryBaseline.attackSynPacketsReceived;
-    const handshakesSinceMitigation = state.completedHandshakes
-      - this.recoveryBaseline.completedHandshakes;
-
-    if (
-      state.pendingHalfOpenConnections === 0
-      && attackSynsSinceMitigation >= this.configuration.recoveryAttackSynThreshold
-      && handshakesSinceMitigation >= this.configuration.recoveryHandshakeThreshold
-    ) {
-      this.recoveryComplete = true;
-      this.simulationPhase = 'network-recovered';
-      this.statusMessage = 'Network recovery complete.';
-    } else {
-      this.simulationPhase = 'network-recovery';
+      this.statusMessage = `${source.label} sends the final ACK.`;
     }
   }
 
@@ -580,25 +449,20 @@ export class LevelOneSimulation {
     }
 
     if (packet.type === 'SYN') {
-      const result = this.connectionModel.receiveSyn({
-        connectionId: packet.connectionId,
-        originId: packet.sessionId,
-        isAttacker: packet.isAttack,
-        receivedAt: this.simulationTime,
-        usesSynCookie: this.synCookieProtectionActive,
-      });
-      if (packet.isAttack) this.attackSynPacketsReceived += 1;
-      this.statusMessage = result.usesSynCookie
-        ? `${packet.connectionId}: server sends a SYN cookie without allocating pending state.`
-        : result.accepted
-          ? `${packet.connectionId}: SYN accepted into the pending backlog.`
-        : `${packet.connectionId}: connection request dropped because the backlog is full.`;
-      if (result.accepted) {
+      const usesSynCookie = this.synCookieProtectionActive;
+      const accepted = usesSynCookie
+        || this.addBacklogEntry(packet.sessionId, packet.isAttack);
+      if (usesSynCookie && packet.isAttack) this.attackContinuedAfterMitigation = true;
+      this.statusMessage = usesSynCookie
+        ? 'Server sends a SYN cookie without allocating pending state.'
+        : accepted
+          ? 'SYN accepted into the pending backlog.'
+          : 'Connection request dropped because the backlog is full.';
+      if (accepted) {
         this.schedule(this.configuration.stepDelay, 'send-syn-ack', {
           sessionId: packet.sessionId,
-          connectionId: packet.connectionId,
           isAttack: packet.isAttack,
-          usesSynCookie: result.usesSynCookie === true,
+          usesSynCookie,
         });
       } else if (!packet.isAttack && client) {
         client.state = 'waiting-for-syn-ack';
@@ -614,15 +478,13 @@ export class LevelOneSimulation {
 
     if (packet.type === 'SYN-ACK') {
       if (packet.isAttack) {
-        // Attack attempts intentionally omit the final ACK, leaving ordinary backlog state pending.
-        this.missingAttackAcksObserved += 1;
+        // Attack attempts intentionally omit the final ACK.
         this.statusMessage = packet.usesSynCookie
-          ? `${packet.connectionId}: no final ACK arrives; no connection is established.`
-          : `${packet.connectionId}: no final ACK arrives; connection remains half-open.`;
+          ? 'No final ACK arrives; no connection is established.'
+          : 'No final ACK arrives; connection remains half-open.';
       } else if (client) {
         this.schedule(this.configuration.stepDelay, 'send-ack', {
           sessionId: client.id,
-          connectionId: packet.connectionId,
           usesSynCookie: packet.usesSynCookie,
         });
       }
@@ -630,176 +492,137 @@ export class LevelOneSimulation {
     }
 
     if (!client) return;
-    const handshakeCompleted = this.connectionModel.completeHandshake(packet.connectionId, {
-      usesSynCookie: packet.usesSynCookie,
-      originId: packet.sessionId,
-    });
+    const handshakeCompleted = packet.usesSynCookie
+      ? !client.compromised
+      : this.removeBacklogEntry(client.id);
     if (!handshakeCompleted) {
       client.state = 'waiting-for-syn-ack';
-      this.statusMessage = `${packet.connectionId}: final ACK rejected; no connection is established.`;
+      this.statusMessage = 'Final ACK rejected; no connection is established.';
       this.schedule(this.configuration.failedClientWaitDuration, 'remove-client', {
         sessionId: client.id,
         replace: true,
       });
       return;
     }
+    this.completedHandshakes += 1;
+    if (packet.usesSynCookie) this.protectedHandshakeCompleted = true;
     client.state = 'connected';
     client.connectedAt = this.simulationTime;
-    this.statusMessage = `${packet.connectionId}: handshake complete; ${client.label} begins exchanging data.`;
+    this.statusMessage = `Handshake complete; ${client.label} begins exchanging data.`;
     this.schedule(0, 'send-data', { sessionId: client.id });
   }
 
-  // Handles one scheduled simulation action when its deadline is reached.
-  handleEvent(event) {
-    const client = event.sessionId
-      ? this.activeClients.get(event.sessionId)
-      : null;
+  /** Converts one randomly selected occupied client slot into the attack source. */
+  maybeStartAttack() {
+    if (this.simulationPhase !== 'normal-traffic') return;
+    if (this.simulationTime < this.configuration.attackStartDelay) return;
 
-    if (event.type === 'spawn-client') {
-      this.spawnClient(event.slotIndex);
-    } else if (event.type === 'send-syn-ack') {
-      if (
-        client
-        && this.connectionModel.sendSynAck(event.connectionId, {
-          usesSynCookie: event.usesSynCookie,
-        })
-      ) {
-        this.spawnPacket('SYN-ACK', this.server, client, event);
-      }
-    } else if (event.type === 'send-ack') {
-      if (client) this.spawnPacket('ACK', client, this.server, event);
-    } else if (event.type === 'send-data') {
-      if (
-        client?.state === 'connected'
-        && !client.compromised
-        && client.dataPacketsSent < this.configuration.dataPacketsPerConnection
-      ) {
-        client.dataPacketsSent += 1;
-        this.spawnPacket('DATA', client, this.server, { sessionId: client.id });
-      }
-    } else if (event.type === 'send-data-response') {
-      if (
-        client?.state === 'connected'
-        && !client.compromised
-        && client.dataPacketsSent < this.configuration.dataPacketsPerConnection
-      ) {
-        client.dataPacketsSent += 1;
-        this.spawnPacket('DATA', this.server, client, { sessionId: client.id });
-      }
-    } else if (event.type === 'end-session') {
-      if (client && !client.compromised) this.removeClient(client.id);
-    } else if (event.type === 'remove-client') {
-      if (client) this.removeClient(client.id, event.replace !== false);
-    } else if (event.type === 'attack-syn') {
-      this.beginAttackAttempt(client);
+    if (this.selectedAttackSlot === null) {
+      this.selectedAttackSlot = Math.floor(this.random() * this.clientSlots.length);
     }
+
+    const changedClient = [...this.activeClients.values()].find(
+      (client) => client.slotIndex === this.selectedAttackSlot,
+    );
+    if (!changedClient) return;
+
+    changedClient.compromised = true;
+    changedClient.state = 'connecting';
+    this.compromisedSessionId = changedClient.id;
+    this.simulationPhase = 'attack-begins';
+    // Remove the client's legitimate work before starting repeated incomplete handshakes.
+    this.events = this.events.filter((event) => event.sessionId !== changedClient.id);
+    this.activePackets.forEach((packet, packetId) => {
+      if (packet.sessionId === changedClient.id) this.activePackets.delete(packetId);
+    });
+    this.statusMessage = `${changedClient.label} begins sending repeated connection requests.`;
+    this.schedule(0, 'attack-syn', { sessionId: changedClient.id });
   }
 
-  // Runs every scheduled action whose simulation deadline has passed.
-  processDueEvents() {
-    while (this.events.length > 0 && this.events[0].at <= this.simulationTime) {
-      this.handleEvent(this.events.shift());
+  // Sends one attack SYN and schedules the compromised client to send another.
+  beginAttackAttempt(client) {
+    if (!client?.compromised) return;
+    this.attackSynPacketsSent += 1;
+    this.spawnPacket('SYN', client, this.server, {
+      sessionId: client.id,
+      isAttack: true,
+    });
+    this.schedule(this.configuration.attackAttemptInterval, 'attack-syn', {
+      sessionId: client.id,
+    });
+  }
+
+  // Reserves one backlog slot. Repeated attacker SYNs intentionally create separate entries.
+  addBacklogEntry(clientId, isAttack) {
+    if (this.backlog.length >= this.backlogCapacity) {
+      if (!isAttack) this.failedLegitimateAttempts += 1;
+      return false;
+    }
+    this.backlog.push({
+      clientId,
+      isAttack,
+      expiresAt: this.simulationTime + this.configuration.pendingConnectionTimeout,
+    });
+    return true;
+  }
+
+  // Releases the legitimate client's backlog slot after its final ACK arrives.
+  removeBacklogEntry(clientId) {
+    const index = this.backlog.findIndex(
+      (entry) => entry.clientId === clientId && !entry.isAttack,
+    );
+    if (index < 0) return false;
+    this.backlog.splice(index, 1);
+    return true;
+  }
+
+  // Drops expired half-open entries and reports how many slots were released.
+  expireBacklogEntries() {
+    const previousLength = this.backlog.length;
+    this.backlog = this.backlog.filter((entry) => entry.expiresAt > this.simulationTime);
+    return previousLength - this.backlog.length;
+  }
+
+  // Updates the mission phase when backlog pressure or failures are observed.
+  updateSimulationPhase() {
+    if (this.synCookieProtectionActive) {
+      this.updateRecoveryState();
+      return;
+    }
+    if (this.simulationPhase === 'normal-traffic') return;
+    if (this.activeMitigationId && !this.synCookieProtectionActive) {
+      this.simulationPhase = 'mitigation-ineffective';
+      return;
+    }
+    if (
+      this.backlog.length >= this.backlogCapacity
+      || this.failedLegitimateAttempts > 0
+    ) {
+      this.simulationPhase = 'attack-established';
+    } else if (
+      this.backlog.length
+      >= Math.ceil(this.backlogCapacity * this.configuration.pressureThreshold)
+    ) {
+      this.simulationPhase = 'backlog-pressure';
     }
   }
 
   /**
-   * Advances the simulation from requestAnimationFrame timestamps.
-   * Pausing cancels this loop, which also freezes packet progress and connection timeouts.
+   * Declares recovery complete after old backlog state drains, attack traffic
+   * continues, and a legitimate client succeeds while SYN cookies are active.
    */
-  tick(timestamp) {
-    if (!this.isPlaying) return;
-    const elapsed = this.lastTimestamp === null ? 0 : timestamp - this.lastTimestamp;
-    this.lastTimestamp = timestamp;
-    this.simulationTime += elapsed * this.speedMultiplier;
-
-    const expired = this.connectionModel.expirePendingConnections(this.simulationTime);
-    if (expired.length > 0) {
-      this.statusMessage = `${expired.length} half-open connection${expired.length === 1 ? '' : 's'} timed out; backlog space released.`;
+  updateRecoveryState() {
+    if (!this.synCookieProtectionActive || this.recoveryComplete) return;
+    if (
+      this.backlog.length === 0
+      && this.attackContinuedAfterMitigation
+      && this.protectedHandshakeCompleted
+    ) {
+      this.recoveryComplete = true;
+      this.simulationPhase = 'network-recovered';
+      this.statusMessage = 'Network recovery complete.';
+    } else {
+      this.simulationPhase = 'network-recovery';
     }
-
-    this.processDueEvents();
-    this.maybeStartAttack();
-
-    const arrivedPackets = [];
-    this.activePackets.forEach((packet, packetId) => {
-      if (this.simulationTime - packet.startedAt >= packet.duration) {
-        arrivedPackets.push(packet);
-        this.activePackets.delete(packetId);
-      }
-    });
-    arrivedPackets.forEach((packet) => this.handlePacketArrival(packet));
-    this.updateSimulationPhase();
-    // Arrival handlers can schedule zero-delay follow-up work for the same frame.
-    this.processDueEvents();
-    this.render();
-    this.animationFrameId = requestAnimationFrame(this.tick);
-  }
-
-  // Starts or resumes the simulation clock and animation loop.
-  play() {
-    if (this.isPlaying) return;
-    this.isPlaying = true;
-    this.lastTimestamp = null;
-    this.processDueEvents();
-    this.render();
-    this.animationFrameId = requestAnimationFrame(this.tick);
-  }
-
-  // Stops the simulation clock without clearing its current state.
-  pause() {
-    if (!this.isPlaying) return;
-    this.isPlaying = false;
-    cancelAnimationFrame(this.animationFrameId);
-    this.animationFrameId = null;
-    this.render();
-  }
-
-  /** Restores the engine to its initial state and schedules the first client arrivals. */
-  reset(shouldPlay = true) {
-    cancelAnimationFrame(this.animationFrameId);
-    this.animationFrameId = null;
-    this.connectionModel.reset();
-    this.connectionModel.setBacklogCapacity(this.configuration.backlogCapacity);
-    this.activeClients = new Map();
-    this.activePackets = new Map();
-    this.events = [];
-    this.isPlaying = false;
-    this.simulationPhase = 'normal-traffic';
-    this.simulationTime = 0;
-    this.lastTimestamp = null;
-    this.sessionSequence = 0;
-    this.nextClientNumber = 1;
-    this.connectionSequence = 0;
-    this.packetSequence = 0;
-    this.compromisedSessionId = null;
-    this.selectedAttackSlot = null;
-    this.attackSynPacketsSent = 0;
-    this.attackSynPacketsReceived = 0;
-    this.missingAttackAcksObserved = 0;
-    this.synCookieProtectionActive = false;
-    this.activeMitigationId = null;
-    this.tcpTrafficBlocked = false;
-    this.droppedTCPPackets = 0;
-    this.blockedIndicatorUntil = 0;
-    this.recoveryComplete = false;
-    this.recoveryBaseline = {
-      attackSynPacketsReceived: 0,
-      completedHandshakes: 0,
-    };
-    this.statusMessage = 'Simulation ready. Clients will appear as they begin connecting.';
-    this.clientSlots.forEach((_, slotIndex) => {
-      this.schedule(slotIndex * this.configuration.clientSpawnInterval, 'spawn-client', {
-        slotIndex,
-      });
-    });
-    this.render();
-    if (shouldPlay) this.play();
-  }
-
-  // Stops the animation loop when the mission page is closed.
-  destroy() {
-    this.isPlaying = false;
-    cancelAnimationFrame(this.animationFrameId);
-    this.animationFrameId = null;
   }
 }
