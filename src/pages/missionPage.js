@@ -14,6 +14,7 @@ import {
   findMissionDefinition,
   getMissionStatus,
   getMissionDisplayTitle,
+  getMissionRoute,
   loadProgress,
   markMissionCompleted,
 } from '../panels/missionCardPanel.js';
@@ -323,7 +324,8 @@ function renderConfiguredMission(definition) {
     // Opens the next mission from the completion panel when one is configured.
     onContinue: completion.nextMissionId
       ? () => {
-          window.location.hash = `mission/${completion.nextMissionId}`;
+          const nextRoute = getMissionRoute(completion.nextMissionId);
+          if (nextRoute) window.location.hash = `mission/${nextRoute}`;
         }
       : null,
   });

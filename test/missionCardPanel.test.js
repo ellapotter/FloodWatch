@@ -8,6 +8,8 @@ import {
 } from '../src/game/levels/levelOneContent.js';
 import {
   findMissionDefinition,
+  findMissionByRoute,
+  getMissionRoute,
   getMissionCardTitle,
   missions,
 } from '../src/panels/missionCardPanel.js';
@@ -21,6 +23,12 @@ test('the mission catalog exposes Level 1 through the shared definition interfac
   assert.equal(typeof definition.createRuntime, 'function');
   assert.equal(typeof definition.getInvestigation, 'function');
   assert.equal(definition.statistics.length, 5);
+});
+
+test('public mission routes do not expose attack names', () => {
+  assert.equal(findMissionByRoute('level-1')?.id, 'syn-flood');
+  assert.equal(getMissionRoute('syn-flood'), 'level-1');
+  assert.equal(missions.some((mission) => mission.route.includes(mission.id)), false);
 });
 
 test('mission completion and navigation are supplied by the Level 1 definition', () => {

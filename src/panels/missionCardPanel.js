@@ -9,30 +9,35 @@ import {
 export const missions = [
   {
     id: 'syn-flood',
+    route: 'level-1',
     level: 1,
     title: 'SYN Flood',
     description: 'Learn how incomplete TCP connections can prevent users from reaching a server.',
   },
   {
     id: 'udp-flood',
+    route: 'level-2',
     level: 2,
     title: 'UDP Flood',
     description: 'Learn how a large amount of UDP traffic can overwhelm a network.',
   },
   {
     id: 'http-flood',
+    route: 'level-3',
     level: 3,
     title: 'HTTP Flood',
     description: 'Learn how repeated website requests can overload a web server.',
   },
   {
     id: 'dns-amplification',
+    route: 'level-4',
     level: 4,
     title: 'DNS Amplification',
     description: 'Learn how DNS responses can be redirected to overwhelm a target.',
   },
   {
     id: 'final-mission',
+    route: 'final',
     level: 5,
     title: 'Final Mission',
     description: 'Use what you learned to identify and defend against multiple attacks.',
@@ -49,6 +54,15 @@ const levelNames = ['One', 'Two', 'Three', 'Four'];
 // Returns basic information for any planned mission.
 export function findMission(missionId) {
   return missions.find((mission) => mission.id === missionId);
+}
+
+// Resolves a neutral public URL segment without exposing the attack type.
+export function findMissionByRoute(route) {
+  return missions.find((mission) => mission.route === route);
+}
+
+export function getMissionRoute(missionId) {
+  return findMission(missionId)?.route ?? null;
 }
 
 // Returns the playable implementation when a mission has been developed.
@@ -91,7 +105,7 @@ export function createMissionCardPanel(mission, status) {
   if (!isLocked) {
     // Opens this mission when the player selects an available card.
     article.querySelector('.mission-card__action').addEventListener('click', () => {
-      window.location.hash = `mission/${mission.id}`;
+      window.location.hash = `mission/${mission.route}`;
     });
   }
 

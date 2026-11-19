@@ -6,6 +6,7 @@ import { renderHelpPage } from './pages/helpPage.js';
 import { renderHomePage } from './pages/homePage.js';
 import { renderMissionPage } from './pages/missionPage.js';
 import { renderSettingsPage } from './pages/settingsPage.js';
+import { findMissionByRoute } from './panels/missionCardPanel.js';
 
 const app = document.querySelector('#app');
 let currentPage = null;
@@ -52,7 +53,9 @@ function renderCurrentRoute() {
     suspendedMission = null;
     page.resume?.();
   } else if (route.startsWith('mission/')) {
-    page = renderMissionPage(route.replace('mission/', ''));
+    const missionRoute = route.replace('mission/', '');
+    const mission = findMissionByRoute(missionRoute);
+    page = mission ? renderMissionPage(mission.id) : renderHomePage();
   } else {
     page = routes[route]?.() ?? renderHomePage();
   }
