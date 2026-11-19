@@ -136,6 +136,7 @@ export const settingsIconMappings = Object.freeze({
   page: 'settings',
   speed: 'gauge',
   hints: 'lightbulb',
+  developer: 'lock',
   reset: 'rotate-ccw',
 });
 

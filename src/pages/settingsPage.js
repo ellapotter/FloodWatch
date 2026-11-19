@@ -1,5 +1,5 @@
 import { createNavigationPanel } from '../panels/navigationPanel.js';
-import { resetProgress } from '../panels/missionCardPanel.js';
+import { loadProgress, resetProgress, unlockAllLevels } from '../panels/missionCardPanel.js';
 import { decorateHeading, settingsIconMappings } from '../icons/iconSystem.js';
 
 const STORAGE_KEY = 'floodwatch-settings';
@@ -47,16 +47,8 @@ export function saveSettings(settings) {
   return normalizedSettings;
 }
 
-export function updateSetting(key, value) {
-  return saveSettings({ ...loadSettings(), [key]: value });
-}
-
 export function getSimulationSpeedMultiplier(settings = loadSettings()) {
   return speedMultipliers[settings.simulationSpeed] ?? speedMultipliers.normal;
-}
-
-export function areHintsEnabled() {
-  return loadSettings().hintsEnabled;
 }
 
 // Builds the settings page and connects its save and progress-reset controls.
@@ -64,6 +56,7 @@ export function renderSettingsPage({ returnRoute = null, onProgressReset = () =>
   const page = document.createElement('div');
   const main = document.createElement('main');
   const settings = loadSettings();
+  const allLevelsUnlocked = loadProgress().allLevelsUnlocked === true;
   main.className = 'page-layout settings-page';
   main.innerHTML = `
     <header class="panel settings-header">
@@ -71,13 +64,15 @@ export function renderSettingsPage({ returnRoute = null, onProgressReset = () =>
         <h1>Settings</h1>
         <p>Adjust the simulation speed, choose whether to use hints, or reset mission progress.</p>
       </div>
-      <a class="button-link settings-return" href="#${returnRoute ?? 'home'}">
-        ${returnRoute ? 'Return to Active Mission' : 'Return to Home'}
-      </a>
+      ${returnRoute ? `<a class="button-link button--secondary settings-return" href="#${returnRoute}">Return to Active Mission</a>` : ''}
     </header>
 
-    <form class="settings-form">
-      <section class="panel settings-section" aria-labelledby="speed-title">
+    <form class="panel settings-form" aria-labelledby="preferences-title">
+      <div class="settings-form__heading">
+        <h2 id="preferences-title">Preferences</h2>
+        <p>Choose how the simulation runs and how much guidance appears.</p>
+      </div>
+      <section class="settings-section settings-preference" aria-labelledby="speed-title">
         <h2 id="speed-title">Simulation Speed</h2>
         <p>Controls how quickly packets and other network activity are displayed.</p>
         <fieldset class="settings-options">
@@ -88,7 +83,7 @@ export function renderSettingsPage({ returnRoute = null, onProgressReset = () =>
         </fieldset>
       </section>
 
-      <section class="panel settings-section" aria-labelledby="hints-title">
+      <section class="settings-section settings-preference" aria-labelledby="hints-title">
         <h2 id="hints-title">Gameplay Hints</h2>
         <label class="hint-setting">
           <input type="checkbox" name="hints-enabled" ${settings.hintsEnabled ? 'checked' : ''}>
@@ -96,14 +91,29 @@ export function renderSettingsPage({ returnRoute = null, onProgressReset = () =>
         </label>
       </section>
 
-      <button type="submit">Save Settings</button>
-      <p class="settings-save-status" aria-live="polite"></p>
+      <footer class="settings-form__footer">
+        <button class="button--primary" type="submit">Save Settings</button>
+        <p class="settings-save-status" aria-live="polite"></p>
+      </footer>
     </form>
+
+    <section class="panel settings-section developer-section" aria-labelledby="developer-title">
+      <div>
+        <h2 id="developer-title">Developer &amp; Educator Tools</h2>
+        <p>Open every mission for demonstrations, lesson planning, and development testing. Unplayed missions will remain marked as available rather than completed.</p>
+      </div>
+      <div class="developer-section__action">
+        <button class="unlock-levels button--secondary" type="button" ${allLevelsUnlocked ? 'disabled' : ''}>
+          ${allLevelsUnlocked ? 'All Levels Unlocked' : 'Unlock All Levels'}
+        </button>
+        <p class="unlock-status" aria-live="polite">${allLevelsUnlocked ? 'Every level is currently available.' : ''}</p>
+      </div>
+    </section>
 
     <section class="panel settings-section reset-section" aria-labelledby="reset-title">
       <h2 id="reset-title">Reset Game Progress</h2>
       <p>Erase completed missions and return progress to the beginning.</p>
-      <button class="reset-progress" type="button">Reset Progress</button>
+      <button class="reset-progress button--danger" type="button">Reset Progress</button>
       <p class="reset-status" aria-live="polite"></p>
     </section>
 
@@ -111,20 +121,25 @@ export function renderSettingsPage({ returnRoute = null, onProgressReset = () =>
       <h2 id="reset-confirmation-title">Reset Game Progress?</h2>
       <p>Are you sure you want to reset your game progress? This action cannot be undone.</p>
       <div class="confirmation-actions">
-        <button class="confirm-reset" type="button">Confirm Reset</button>
-        <button class="cancel-reset" type="button">Cancel</button>
+        <button class="confirm-reset button--danger" type="button">Confirm Reset</button>
+        <button class="cancel-reset button--secondary" type="button">Close</button>
       </div>
     </dialog>
   `;
   decorateHeading(main.querySelector('.settings-header h1'), settingsIconMappings.page, {
     size: 24,
   });
+  decorateHeading(main.querySelector('#preferences-title'), settingsIconMappings.page);
   decorateHeading(main.querySelector('#speed-title'), settingsIconMappings.speed);
   decorateHeading(main.querySelector('#hints-title'), settingsIconMappings.hints);
+  decorateHeading(main.querySelector('#developer-title'), settingsIconMappings.developer);
   decorateHeading(main.querySelector('#reset-title'), settingsIconMappings.reset);
 
   const form = main.querySelector('.settings-form');
   const confirmation = main.querySelector('.settings-confirmation');
+  const unlockButton = main.querySelector('.unlock-levels');
+  const unlockStatus = main.querySelector('.unlock-status');
+  const returnLink = main.querySelector('.settings-return');
   // Saves the selected speed and hint options when the form is submitted.
   form.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -135,20 +150,29 @@ export function renderSettingsPage({ returnRoute = null, onProgressReset = () =>
     main.querySelector('.settings-save-status').textContent = 'Settings saved.';
   });
 
+  // Makes every mission available without changing completion history.
+  unlockButton.addEventListener('click', () => {
+    unlockAllLevels();
+    unlockButton.disabled = true;
+    unlockButton.textContent = 'All Levels Unlocked';
+    unlockStatus.textContent = 'Every level is now available from the Home screen.';
+  });
+
   // Opens the progress-reset confirmation dialog.
   main.querySelector('.reset-progress').addEventListener('click', () => confirmation.showModal());
   // Closes the confirmation dialog without resetting progress.
   main.querySelector('.cancel-reset').addEventListener('click', () => confirmation.close());
-  // Treats the browser's dialog cancel action like the Cancel button.
+  // Treats the browser's dialog cancel action like the Close button.
   confirmation.addEventListener('cancel', () => confirmation.close());
   // Clears saved progress after the player confirms the reset.
   main.querySelector('.confirm-reset').addEventListener('click', () => {
     resetProgress();
     confirmation.close();
     onProgressReset();
-    const returnLink = main.querySelector('.settings-return');
-    returnLink.href = '#home';
-    returnLink.textContent = 'Return to Home';
+    returnLink?.remove();
+    unlockButton.disabled = false;
+    unlockButton.textContent = 'Unlock All Levels';
+    unlockStatus.textContent = '';
     main.querySelector('.reset-status').textContent = 'Game progress has been reset.';
   });
 
