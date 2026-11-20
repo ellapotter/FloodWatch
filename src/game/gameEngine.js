@@ -10,8 +10,10 @@ export const networkSimulationTiming = Object.freeze({
   packetDuration: 4000, // How long a packet takes to travel from source to destination
   responseDelay: 750, // How long the server waits before answering a request
   clientStartInterval: 4500, // Delay between each of the first clients appearing
-  attackStartDelay: 60000, // How long before an attack starts
-  initialAttackInterval: 1000, // Gap between attack packets once the attack starts
+  attackStartDelay: 60000, // Fallback when a mission does not provide randomized options
+  attackStartDelayOptions: Object.freeze([50000, 60000, 70000]),
+  floodInterval: 1000, // Default gap between simulated flood packets
+  floodAnimationInterval: 1000, // Minimum gap between visible flood packet cards
   clientDisruptionDuration: 12000, // How long a legitimate client waits for a response before leaving
 });
 

@@ -43,6 +43,11 @@ export class TrafficSimulation extends EventDrivenNetworkSimulation {
     this.activeMitigationId = null;
     this.recoveryComplete = false;
     this.attackClientSlot = null;
+    this.serverShutdown = false;
+    const attackDelayOptions = this.configuration.attackStartDelayOptions;
+    this.attackStartsAt = Array.isArray(attackDelayOptions) && attackDelayOptions.length > 0
+      ? attackDelayOptions[Math.floor(this.random() * attackDelayOptions.length)]
+      : this.configuration.attackStartDelay;
     this.resetBehavior();
     this.render();
     if (shouldPlay) this.play();
@@ -69,7 +74,9 @@ export class TrafficSimulation extends EventDrivenNetworkSimulation {
     this.animationFrameId = requestAnimationFrame(this.tick);
   }
 
-  beforeEvents() {}
+  beforeEvents() {
+    this.maybeStartAttack();
+  }
 
   afterEvents() {}
 
@@ -106,6 +113,73 @@ export class TrafficSimulation extends EventDrivenNetworkSimulation {
       this.attackClientSlot = Math.floor(this.random() * optionCount);
     }
     return this.attackClientSlot;
+  }
+
+  // Replaces a randomly selected legitimate client with a new attack-only session.
+  maybeStartAttack() {
+    if (this.simulationPhase !== 'normal-traffic') return;
+    if (this.simulationTime < this.attackStartsAt) return;
+
+    const attackSlot = this.selectAttackSlot(this.clientSlots.length);
+    const existingClient = [...this.activeClients.values()].find(
+      (client) => client.slotIndex === attackSlot,
+    );
+    if (!existingClient) {
+      this.attackClientSlot = null;
+      return;
+    }
+
+    this.removeClient(existingClient.id, false);
+    this.spawnAttackClient(attackSlot);
+    this.simulationPhase = 'attack-begins';
+  }
+
+  // Registers a protocol-specific attacker and starts only its attack traffic.
+  spawnAttackClient(slotIndex) {
+    const client = this.createAttackClient(slotIndex);
+    this.activeClients.set(client.id, client);
+    this.onAttackClientSpawned(client);
+    this.scheduleInitialAttack(client);
+    return client;
+  }
+
+  // Runs one attempt in a sustained flood and schedules the next attempt.
+  sendFloodAttack(clientId, packetType) {
+    const client = this.activeClients.get(clientId);
+    if (!client) return;
+    // Every scheduled flood attempt is rendered so attacks appear as one continuous stream.
+    this.sendFloodPacket(client, packetType, { animate: true });
+    this.schedule(this.configuration.floodInterval, 'flood-attack', {
+      clientId,
+      packetType,
+    });
+  }
+
+  handleFloodEvent(event) {
+    if (event.type !== 'flood-attack') return false;
+    this.sendFloodAttack(event.clientId, event.packetType);
+    return true;
+  }
+
+  createAttackClient() {
+    throw new TypeError('TrafficSimulation levels must implement createAttackClient().');
+  }
+
+  onAttackClientSpawned() {}
+
+  scheduleInitialAttack(client) {
+    this.schedule(0, 'flood-attack', {
+      clientId: client.id,
+      packetType: this.getFloodPacketType(),
+    });
+  }
+
+  getFloodPacketType() {
+    throw new TypeError('TrafficSimulation levels must implement getFloodPacketType().');
+  }
+
+  sendFloodPacket() {
+    throw new TypeError('TrafficSimulation levels must implement sendFloodPacket().');
   }
 
   // Spawns a new packet
@@ -176,6 +250,8 @@ export class TrafficSimulation extends EventDrivenNetworkSimulation {
       destinationLabel: packet.destinationLabel,
       visualLaneOffset: packet.visualLaneOffset,
       direction: toServer ? 'client-to-server' : 'server-to-client',
+      usesSynCookie: false,
+      willBeBlocked: false,
       progress,
       x: packet.source.x + (packet.destination.x - packet.source.x) * progress,
       y: packet.source.y + (packet.destination.y - packet.source.y) * progress,

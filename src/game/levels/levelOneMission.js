@@ -114,6 +114,7 @@ function getLevelOneServerState(state) {
   let statusLabel = 'Online';
   if (trafficBlocked) statusLabel = 'TCP Traffic Blocked';
   else if (state.synCookieProtectionActive) statusLabel = 'SYN Cookies Active';
+  else if (state.serverShutdown) statusLabel = 'Server Unresponsive';
   else if (backlogIncreased) {
     statusLabel = state.pendingHalfOpenConnections >= state.backlogCapacity
       ? 'Backlog Full'
@@ -122,7 +123,7 @@ function getLevelOneServerState(state) {
 
   return {
     statusLabel,
-    underPressure: (underPressure && !recoveryActive) || trafficBlocked,
+    underPressure: (underPressure && !recoveryActive) || trafficBlocked || state.serverShutdown,
     recovering: recoveryActive,
     protected: Boolean(state.synCookieProtectionActive),
     showBlockOverlay: trafficBlocked,
@@ -136,20 +137,23 @@ export const levelOneMission = defineNetworkMission({
     'Observe the network and watch as clients establish connections with the server. Watch how the connection process works and identify any potential issues.',
   statistics: [
     {
-      key: 'pendingHalfOpenConnections',
+      key: 'displayedPendingHalfOpenConnections',
       label: 'Pending TCP connections',
       primary: true,
       capacity: (state) => state.backlogCapacity
-        ? state.pendingHalfOpenConnections / state.backlogCapacity * 100
+        ? state.displayedPendingHalfOpenConnections / state.backlogCapacity * 100
         : 0,
       status(state) {
         if (state.synCookieProtectionActive) {
           return { label: state.recoveryComplete ? 'Stable' : 'Recovering', tone: 'success' };
         }
-        if (state.pendingHalfOpenConnections >= state.backlogCapacity) {
+        if (state.displayedPendingHalfOpenConnections >= state.backlogCapacity) {
           return { label: 'Full', tone: 'warning' };
         }
-        if (state.pendingHalfOpenConnections >= Math.ceil(state.backlogCapacity * 0.6)) {
+        if (
+          state.displayedPendingHalfOpenConnections
+          >= Math.ceil(state.backlogCapacity * 0.6)
+        ) {
           return { label: 'Increasing', tone: 'warning' };
         }
         return { label: 'Normal', tone: 'neutral' };

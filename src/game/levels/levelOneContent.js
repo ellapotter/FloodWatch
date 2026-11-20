@@ -10,7 +10,7 @@ export const levelOneInvestigationContent = Object.freeze({
   client: {
     title: 'Client',
     connectedDetails:
-      'This is a client trying to communicate with the web server. (It is currently connected and sending data to the server)',
+      'This is a client trying to communicate with the web server. It is currently connected and sending data to the server.',
     connectingDetails:
       'This is a client trying to communicate with the web server. It is currently attempting to connect to the server through a three-way handshake.',
     meaning:

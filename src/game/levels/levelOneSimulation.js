@@ -57,12 +57,14 @@ export class LevelOneSimulation extends TrafficSimulation {
       : this.configuration.backlogCapacity;
 
     if (this.synCookieProtectionActive) {
+      this.serverShutdown = false;
       this.attackContinuedAfterMitigation = false;
       this.protectedHandshakeCompleted = false;
       this.simulationPhase = 'mitigation-active';
     } else if (this.tcpTrafficBlocked) {
       this.simulationPhase = 'mitigation-ineffective';
     } else {
+      if (mitigationId === 'increase-tcp-backlog') this.serverShutdown = false;
       this.simulationPhase = 'mitigation-ineffective';
     }
   }
@@ -70,6 +72,9 @@ export class LevelOneSimulation extends TrafficSimulation {
   /** Returns a serializable snapshot consumed by mission components. */
   getState() {
     const visibleClients = this.getVisibleClients();
+    const displayedPendingHalfOpenConnections = this.serverShutdown
+      ? this.backlogCapacity
+      : this.backlog.length;
     return {
       isPlaying: this.isPlaying,
       simulationPhase: this.simulationPhase,
@@ -87,9 +92,11 @@ export class LevelOneSimulation extends TrafficSimulation {
       tcpTrafficBlocked: this.tcpTrafficBlocked,
       droppedTCPPackets: this.droppedTCPPackets,
       blockedPacketIndicatorActive: this.simulationTime < this.blockedIndicatorUntil,
-      serverAvailable: !this.tcpTrafficBlocked,
+      serverAvailable: !this.tcpTrafficBlocked && !this.serverShutdown,
+      serverShutdown: this.serverShutdown,
       recoveryComplete: this.recoveryComplete,
       pendingHalfOpenConnections: this.backlog.length,
+      displayedPendingHalfOpenConnections,
       backlogCapacity: this.backlogCapacity,
       completedHandshakes: this.completedHandshakes,
       failedLegitimateAttempts: this.failedLegitimateAttempts,
@@ -122,14 +129,12 @@ export class LevelOneSimulation extends TrafficSimulation {
 
   beforeEvents() {
     this.expireBacklogEntries();
-  }
-
-  afterEvents() {
-    this.maybeStartAttack();
+    super.beforeEvents();
   }
 
   // Handles one scheduled simulation action when its deadline is reached.
   handleEvent(event) {
+    if (this.handleFloodEvent(event)) return;
     const client = event.sessionId
       ? this.activeClients.get(event.sessionId)
       : null;
@@ -137,7 +142,9 @@ export class LevelOneSimulation extends TrafficSimulation {
     if (event.type === 'spawn-client') {
       this.spawnClient(event.slotIndex);
     } else if (event.type === 'send-syn-ack') {
-      if (client) this.spawnPacket('SYN-ACK', this.server, client, event);
+      if (client && !this.serverShutdown) {
+        this.spawnPacket('SYN-ACK', this.server, client, event);
+      }
     } else if (event.type === 'send-ack') {
       if (client) this.spawnPacket('ACK', client, this.server, event);
     } else if (event.type === 'send-data') {
@@ -162,8 +169,6 @@ export class LevelOneSimulation extends TrafficSimulation {
       if (client && !client.compromised) this.removeClient(client.id);
     } else if (event.type === 'remove-client') {
       if (client) this.removeClient(client.id, event.replace !== false);
-    } else if (event.type === 'attack-syn') {
-      this.beginAttackAttempt(client);
     }
   }
 
@@ -203,6 +208,7 @@ export class LevelOneSimulation extends TrafficSimulation {
     const client = this.activeClients.get(sessionId);
     if (!client) return;
     this.activeClients.delete(sessionId);
+    this.backlog = this.backlog.filter((entry) => entry.clientId !== sessionId);
     this.deletePackets((packet) => packet.sessionId === sessionId);
     this.cancelEvents((event) => event.sessionId === sessionId);
     if (replace) {
@@ -210,6 +216,33 @@ export class LevelOneSimulation extends TrafficSimulation {
         slotIndex: client.slotIndex,
       });
     }
+  }
+
+  // Creates the TCP-specific state for a new attack-only client.
+  createAttackClient(slotIndex) {
+    const slot = this.clientSlots[slotIndex];
+    this.sessionSequence += 1;
+    const clientNumber = this.allocateClientNumber();
+    const client = {
+      id: `client-session-${this.sessionSequence}`,
+      clientNumber,
+      label: `Client ${clientNumber}`,
+      slotIndex,
+      x: slot.x,
+      y: slot.y,
+      state: 'connecting',
+      compromised: true,
+      dataPacketsSent: 0,
+    };
+    return client;
+  }
+
+  onAttackClientSpawned(client) {
+    this.compromisedSessionId = client.id;
+  }
+
+  getFloodPacketType() {
+    return 'SYN';
   }
 
   // Starts a normal TCP handshake for a legitimate client.
@@ -266,7 +299,7 @@ export class LevelOneSimulation extends TrafficSimulation {
       const accepted = usesSynCookie
         || this.addBacklogEntry(packet.sessionId, packet.isAttack);
       if (usesSynCookie && packet.isAttack) this.attackContinuedAfterMitigation = true;
-      if (accepted) {
+      if (accepted && !this.serverShutdown) {
         this.schedule(this.configuration.responseDelay, 'send-syn-ack', {
           sessionId: packet.sessionId,
           isAttack: packet.isAttack,
@@ -313,37 +346,13 @@ export class LevelOneSimulation extends TrafficSimulation {
     this.schedule(0, 'send-data', { sessionId: client.id });
   }
 
-  /** Converts one randomly selected occupied client slot into the attack source. */
-  maybeStartAttack() {
-    if (this.simulationPhase !== 'normal-traffic') return;
-    if (this.simulationTime < this.configuration.attackStartDelay) return;
-
-    const attackSlot = this.selectAttackSlot();
-    const changedClient = [...this.activeClients.values()].find(
-      (client) => client.slotIndex === attackSlot,
-    );
-    if (!changedClient) return;
-
-    changedClient.compromised = true;
-    changedClient.state = 'connecting';
-    this.compromisedSessionId = changedClient.id;
-    this.simulationPhase = 'attack-begins';
-    // Remove the client's legitimate work before starting repeated incomplete handshakes.
-    this.cancelEvents((event) => event.sessionId === changedClient.id);
-    this.deletePackets((packet) => packet.sessionId === changedClient.id);
-    this.schedule(0, 'attack-syn', { sessionId: changedClient.id });
-  }
-
-  // Sends one attack SYN and schedules the compromised client to send another.
-  beginAttackAttempt(client) {
+  sendFloodPacket(client, packetType, { animate }) {
     if (!client?.compromised) return;
     this.attackSynPacketsSent += 1;
-    this.spawnPacket('SYN', client, this.server, {
+    this.spawnPacket(packetType, client, this.server, {
       sessionId: client.id,
       isAttack: true,
-    });
-    this.schedule(this.configuration.initialAttackInterval, 'attack-syn', {
-      sessionId: client.id,
+      animate,
     });
   }
 
@@ -358,6 +367,7 @@ export class LevelOneSimulation extends TrafficSimulation {
       isAttack,
       expiresAt: this.simulationTime + this.configuration.pendingConnectionTimeout,
     });
+    if (this.backlog.length >= this.backlogCapacity) this.serverShutdown = true;
     return true;
   }
 
