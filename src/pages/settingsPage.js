@@ -9,12 +9,17 @@ export const defaultSettings = Object.freeze({
   hintsEnabled: false,
 });
 
-const validSimulationSpeeds = new Set(['slow', 'normal', 'fast']);
-const speedMultipliers = {
-  slow: 0.5,
-  normal: 1,
-  fast: 2,
-};
+export const simulationSpeedOptions = Object.freeze([
+  Object.freeze({ value: 'slow', label: 'Slow', multiplier: 0.5 }),
+  Object.freeze({ value: 'normal', label: 'Normal', multiplier: 1 }),
+  Object.freeze({ value: 'fast', label: 'Fast', multiplier: 2 }),
+  Object.freeze({ value: 'very-fast', label: 'Very Fast', multiplier: 3 }),
+]);
+
+const validSimulationSpeeds = new Set(simulationSpeedOptions.map(({ value }) => value));
+const speedMultipliers = Object.fromEntries(
+  simulationSpeedOptions.map(({ value, multiplier }) => [value, multiplier]),
+);
 
 // Replaces missing or invalid setting values with defaults.
 function normalizeSettings(settings) {
@@ -51,6 +56,11 @@ export function getSimulationSpeedMultiplier(settings = loadSettings()) {
   return speedMultipliers[settings.simulationSpeed] ?? speedMultipliers.normal;
 }
 
+export function getSimulationSpeedValue(multiplier) {
+  return simulationSpeedOptions.find((option) => option.multiplier === Number(multiplier))?.value
+    ?? defaultSettings.simulationSpeed;
+}
+
 // Builds the settings page and connects its save and progress-reset controls.
 export function renderSettingsPage({ returnRoute = null, onProgressReset = () => {} } = {}) {
   const page = document.createElement('div');
@@ -77,9 +87,9 @@ export function renderSettingsPage({ returnRoute = null, onProgressReset = () =>
         <p>Controls how quickly packets and other network activity are displayed.</p>
         <fieldset class="settings-options">
           <legend>Select a speed</legend>
-          <label><input type="radio" name="simulation-speed" value="slow" ${settings.simulationSpeed === 'slow' ? 'checked' : ''}> <span><strong>Slow</strong> – 0.5× speed</span></label>
-          <label><input type="radio" name="simulation-speed" value="normal" ${settings.simulationSpeed === 'normal' ? 'checked' : ''}> <span><strong>Normal</strong> – 1× speed</span></label>
-          <label><input type="radio" name="simulation-speed" value="fast" ${settings.simulationSpeed === 'fast' ? 'checked' : ''}> <span><strong>Fast</strong> – 2× speed</span></label>
+          ${simulationSpeedOptions.map((option) => `
+            <label><input type="radio" name="simulation-speed" value="${option.value}" ${settings.simulationSpeed === option.value ? 'checked' : ''}> <span><strong>${option.label}</strong> – ${option.multiplier}× speed</span></label>
+          `).join('')}
         </fieldset>
       </section>
 

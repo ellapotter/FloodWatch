@@ -6,6 +6,7 @@ import { createIcon, decorateHeading, panelIconMappings } from '../icons/iconSys
 
 const defaultClientStatusLabels = Object.freeze({
   waiting: 'Waiting...',
+  disrupted: 'Communication disrupted',
   hinted: 'Review activity',
   connected: 'Connected',
   default: 'Connecting',
@@ -14,10 +15,11 @@ const defaultClientStatusLabels = Object.freeze({
 export function getClientPresentation(client, showHints = false, statusLabels = {}) {
   if (!client) return null;
   const labels = { ...defaultClientStatusLabels, ...statusLabels };
-  const isWaiting = client.behavior === 'waiting';
+  const isDisrupted = client.behavior === 'disrupted';
+  const isWaiting = client.behavior === 'waiting' || isDisrupted;
   const isSuspicious = client.behavior === 'suspicious';
   const statusLabel = isWaiting
-    ? labels.waiting
+    ? isDisrupted ? labels.disrupted : labels.waiting
     : isSuspicious && showHints
       ? labels.hinted
       : labels[client.state] ?? labels.default;
@@ -25,7 +27,9 @@ export function getClientPresentation(client, showHints = false, statusLabels = 
     isWaiting,
     statusLabel,
     ariaLabel: isWaiting
-      ? `Investigate ${client.label}, connection delayed`
+      ? isDisrupted
+        ? `Investigate ${client.label}, communication disrupted by packet loss`
+        : `Investigate ${client.label}, connection delayed`
       : `Investigate ${client.label}`,
   };
 }
@@ -34,7 +38,7 @@ export function getPacketVisualPosition(packet, diagram) {
   const client = diagram.clients[packet.slotIndex];
   if (!client) return { x: packet.x, y: packet.y };
   const progress = Math.min(
-    packet.willBeBlocked ? 0.88 : 1,
+    packet.willBeBlocked || packet.willBeDropped ? 0.88 : 1,
     Math.max(0, packet.progress ?? 0),
   );
   // Keep the full packet card between the device cards, not over their edges.
@@ -72,7 +76,9 @@ export function createNetworkObserverPanel({
   onStateChange,
   onInvestigate = () => {},
   onRestart = () => {},
+  onSpeedChange = () => {},
   speedMultiplier = 1,
+  speedOptions = [],
   hintsEnabled = false,
 }) {
   const section = document.createElement('section');
@@ -106,9 +112,25 @@ export function createNetworkObserverPanel({
       <g class="network-devices"></g>
     </svg>
     <div class="simulation-controls" aria-label="Simulation controls">
-      <button class="button--primary" type="button" data-action="play" aria-pressed="false">Play</button>
-      <button class="button--secondary" type="button" data-action="pause" aria-pressed="false">Pause</button>
-      <button class="button--secondary" type="button" data-action="restart">Restart</button>
+      <div class="simulation-playback-controls">
+        <button class="button--primary" type="button" data-action="play" aria-pressed="false">Play</button>
+        <button class="button--secondary" type="button" data-action="pause" aria-pressed="false">Pause</button>
+        <button class="button--secondary" type="button" data-action="restart">Restart</button>
+      </div>
+      <div class="simulation-speed-control" role="group" aria-label="Simulation speed">
+        <span>Speed</span>
+        <div class="simulation-speed-options">
+          ${speedOptions.map((option) => `
+            <button
+              class="simulation-speed-button${option.multiplier === speedMultiplier ? ' is-selected' : ''}"
+              type="button"
+              data-speed="${option.multiplier}"
+              aria-label="${option.label}, ${option.multiplier} times speed"
+              aria-pressed="${option.multiplier === speedMultiplier}"
+            >${option.multiplier}×</button>
+          `).join('')}
+        </div>
+      </div>
     </div>
     <span class="investigation-hover-hint" aria-hidden="true" hidden></span>
   `;
@@ -329,6 +351,7 @@ export function createNetworkObserverPanel({
 
   const playButton = section.querySelector('[data-action="play"]');
   const pauseButton = section.querySelector('[data-action="pause"]');
+  const speedButtons = [...section.querySelectorAll('[data-speed]')];
 
   // Creates, moves, and removes packet elements 
   function renderPackets(packets) {
@@ -375,8 +398,8 @@ export function createNetworkObserverPanel({
       const position = getPacketVisualPosition(packet, diagram);
       element.classList.toggle('is-server-bound', packet.direction === 'client-to-server');
       element.classList.toggle('is-client-bound', packet.direction === 'server-to-client');
-      element.classList.toggle('uses-syn-cookie', packet.usesSynCookie);
-      element.classList.toggle('will-be-blocked', packet.willBeBlocked);
+      element.classList.toggle('uses-syn-cookie', packet.usesSynCookie === true);
+      element.classList.toggle('will-be-blocked', packet.willBeBlocked === true);
       element.classList.toggle(
         'is-attack-traffic',
         Boolean(attackPacketType) && packet.isAttack === true && packet.type === attackPacketType,
@@ -427,6 +450,19 @@ export function createNetworkObserverPanel({
   playButton.addEventListener('click', () => simulation.play());
   // Freezes the simulation from the Pause button.
   pauseButton.addEventListener('click', () => simulation.pause());
+  // Changes the live simulation speed, highlights its button, and saves the preference.
+  speedButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const multiplier = Number(button.dataset.speed);
+      speedButtons.forEach((speedButton) => {
+        const selected = speedButton === button;
+        speedButton.classList.toggle('is-selected', selected);
+        speedButton.setAttribute('aria-pressed', selected);
+      });
+      simulation.setSpeed(multiplier);
+      onSpeedChange(multiplier);
+    });
+  });
   // Resets the simulation
   section.querySelector('[data-action="restart"]').addEventListener('click', () => {
     simulation.reset();

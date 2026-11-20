@@ -26,7 +26,13 @@ import {
   createEvidenceStore,
   createMissionState,
 } from '../game/gameEngine.js';
-import { getSimulationSpeedMultiplier, loadSettings } from './settingsPage.js';
+import {
+  getSimulationSpeedMultiplier,
+  getSimulationSpeedValue,
+  loadSettings,
+  saveSettings,
+  simulationSpeedOptions,
+} from './settingsPage.js';
 import { renderPlaceholderPage } from './placeholderPage.js';
 
 // Creates a text value used to detect changes in investigation content.
@@ -280,7 +286,14 @@ function renderConfiguredMission(definition) {
   const settings = loadSettings();
   runtime = definition.createRuntime({
     speedMultiplier: getSimulationSpeedMultiplier(settings),
+    speedOptions: simulationSpeedOptions,
     hintsEnabled: settings.hintsEnabled,
+    onSpeedChange(multiplier) {
+      saveSettings({
+        ...loadSettings(),
+        simulationSpeed: getSimulationSpeedValue(multiplier),
+      });
+    },
     // Keeps the shared panels synchronized with the latest simulation state.
     onStateChange(state, recoveryState) {
       latestSimulationState = state;
