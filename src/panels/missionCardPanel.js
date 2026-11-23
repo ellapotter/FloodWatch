@@ -1,4 +1,5 @@
 import { levelOneMission } from '../game/levels/levelOneMission.js';
+import { levelTwoMission } from '../game/levels/levelTwoMission.js';
 import {
   createIcon,
   decorateHeading,
@@ -12,7 +13,8 @@ export const missions = [
     route: 'level-1',
     level: 1,
     title: 'SYN Flood',
-    description: 'Learn how incomplete TCP connections can prevent users from reaching a server.',
+    description:
+      'Learn how incomplete TCP connections can prevent users from reaching a server.',
     definition: levelOneMission,
   },
   {
@@ -20,28 +22,33 @@ export const missions = [
     route: 'level-2',
     level: 2,
     title: 'UDP Flood',
-    description: 'Learn how a large amount of UDP traffic can overwhelm a network.',
+    description:
+      'Learn how a large amount of UDP traffic can overwhelm a network.',
+    definition: levelTwoMission,
   },
   {
     id: 'http-flood',
     route: 'level-3',
     level: 3,
     title: 'HTTP Flood',
-    description: 'Learn how repeated website requests can overload a web server.',
+    description:
+      'Learn how repeated website requests can overload a web server.',
   },
   {
     id: 'dns-amplification',
     route: 'level-4',
     level: 4,
     title: 'DNS Amplification',
-    description: 'Learn how DNS responses can be redirected to overwhelm a target.',
+    description:
+      'Learn how DNS responses can be redirected to overwhelm a target.',
   },
   {
     id: 'final-mission',
     route: 'final',
     level: 5,
     title: 'Final Mission',
-    description: 'Use what you learned to identify and defend against multiple attacks.',
+    description:
+      'Use what you learned to identify and defend against multiple attacks.',
     isFinal: true,
   },
 ];
@@ -69,7 +76,9 @@ export function findMissionDefinition(missionId) {
 
 // Returns the level name displayed on mission cards and placeholder pages.
 export function getMissionDisplayTitle(mission) {
-  return mission.isFinal ? 'Final Mission' : `Level ${levelNames[mission.level - 1]}`;
+  return mission.isFinal
+    ? 'Final Mission'
+    : `Level ${levelNames[mission.level - 1]}`;
 }
 
 export function getMissionCardTitle(mission) {
@@ -82,11 +91,15 @@ export function getMissionCardTitle(mission) {
 export function getMissionCardPresentation(mission, status) {
   const completed = status === 'Completed';
   return {
-    title: completed ? getMissionCardTitle(mission) : getMissionDisplayTitle(mission),
+    title: completed
+      ? getMissionCardTitle(mission)
+      : getMissionDisplayTitle(mission),
     description: completed ? mission.description : '',
     icon: completed
       ? missionIconMappings[mission.id]
-      : status === 'Locked' ? 'lock' : 'shield-alert',
+      : status === 'Locked'
+        ? 'lock'
+        : 'shield-alert',
   };
 }
 
@@ -106,26 +119,33 @@ export function createMissionCardPanel(mission, status) {
       <span class="mission-card__status">${status}</span>
     </div>
     <h3>${presentation.title}</h3>
-    ${isCompleted
-      ? `<p>${presentation.description}</p>`
-      : isLocked
-        ? '<p class="mission-card__locked-note">Complete earlier missions to unlock.</p>'
-        : ''}
+    ${
+      isCompleted
+        ? `<p>${presentation.description}</p>`
+        : isLocked
+          ? '<p class="mission-card__locked-note">Complete earlier missions to unlock.</p>'
+          : ''
+    }
     <button class="mission-card__action" type="button" ${isLocked ? 'disabled' : ''}>${isLocked ? 'Locked' : buttonLabel}</button>
   `;
-  article.querySelector('.mission-card__icon').append(
-    createIcon(presentation.icon, { size: 27 }),
-  );
-  article.querySelector('.mission-card__action').prepend(
-    createIcon(missionStatusIconMappings[status], { size: 17 }),
-  );
-  if (!isLocked) article.querySelector('.mission-card__action').classList.add('button--primary');
+  article
+    .querySelector('.mission-card__icon')
+    .append(createIcon(presentation.icon, { size: 27 }));
+  article
+    .querySelector('.mission-card__action')
+    .prepend(createIcon(missionStatusIconMappings[status], { size: 17 }));
+  if (!isLocked)
+    article
+      .querySelector('.mission-card__action')
+      .classList.add('button--primary');
 
   if (!isLocked) {
     // Opens this mission when the player selects an available card.
-    article.querySelector('.mission-card__action').addEventListener('click', () => {
-      window.location.hash = `mission/${mission.route}`;
-    });
+    article
+      .querySelector('.mission-card__action')
+      .addEventListener('click', () => {
+        window.location.hash = `mission/${mission.route}`;
+      });
   }
 
   return article;
@@ -139,12 +159,17 @@ export function loadProgress() {
   try {
     const savedProgress = JSON.parse(localStorage.getItem(STORAGE_KEY));
     const validMissionIds = new Set(missions.map((mission) => mission.id));
-    const completedMissionIds = Array.isArray(savedProgress?.completedMissionIds)
-      ? savedProgress.completedMissionIds.filter((id) => validMissionIds.has(id))
+    const completedMissionIds = Array.isArray(
+      savedProgress?.completedMissionIds,
+    )
+      ? savedProgress.completedMissionIds.filter((id) =>
+          validMissionIds.has(id),
+        )
       : [];
 
     const progress = { completedMissionIds: [...new Set(completedMissionIds)] };
-    if (savedProgress?.allLevelsUnlocked === true) progress.allLevelsUnlocked = true;
+    if (savedProgress?.allLevelsUnlocked === true)
+      progress.allLevelsUnlocked = true;
     return progress;
   } catch {
     return { ...initialProgress };
@@ -199,7 +224,8 @@ export function getMissionStatus(mission, progress) {
   if (mission.level === 1) return 'Available';
 
   const requiredMissions = missions.filter(
-    (requiredMission) => requiredMission.level < mission.level && !requiredMission.isFinal,
+    (requiredMission) =>
+      requiredMission.level < mission.level && !requiredMission.isFinal,
   );
   const requirementsComplete = requiredMissions.every((requiredMission) =>
     progress.completedMissionIds.includes(requiredMission.id),
