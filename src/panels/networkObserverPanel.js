@@ -38,7 +38,11 @@ export function getPacketVisualPosition(packet, diagram) {
   const client = diagram.clients[packet.slotIndex];
   if (!client) return { x: packet.x, y: packet.y };
   const progress = Math.min(
-    packet.willBeBlocked || packet.willBeDropped ? 0.88 : 1,
+    packet.willBeFiltered
+      ? 0.08
+      : packet.willBeBlocked || packet.willBeDropped
+        ? 0.88
+        : 1,
     Math.max(0, packet.progress ?? 0),
   );
   // Keep the full packet card between the device cards, not over their edges.
@@ -158,6 +162,13 @@ export function createNetworkObserverPanel({
     'transform',
     `translate(${diagram.server.x - 105} ${diagram.server.y})`,
   );
+  const clientFilterOverlays = diagram.clients.map((client) => {
+    const overlay = blockOverlay.cloneNode(true);
+    overlay.hidden = true;
+    overlay.setAttribute('transform', `translate(${client.x + 105} ${client.y})`);
+    blockOverlay.parentNode.insertBefore(overlay, blockOverlay);
+    return overlay;
+  });
   let showHints = hintsEnabled;
   let latestSimulationState = null;
 
@@ -345,8 +356,30 @@ export function createNetworkObserverPanel({
     serverDevice.classList.toggle('is-recovering', presentation.recovering === true);
     serverDevice.classList.toggle('is-protected', presentation.protected === true);
     serverStatus.textContent = presentation.statusLabel;
-    blockOverlay.toggleAttribute('hidden', presentation.showBlockOverlay !== true);
+    const showAllClientFilters = presentation.blockOverlayAllClients === true;
+    blockOverlay.toggleAttribute(
+      'hidden',
+      presentation.showBlockOverlay !== true || showAllClientFilters,
+    );
     blockOverlay.classList.toggle('is-active', presentation.blockOverlayActive === true);
+    blockOverlay.querySelector('.traffic-block-label').textContent =
+      presentation.blockOverlayLabel ?? blockOverlayLabel;
+    const filterClient = diagram.clients[presentation.blockOverlaySlot];
+    blockOverlay.setAttribute(
+      'transform',
+      filterClient
+        ? `translate(${filterClient.x + 105} ${filterClient.y})`
+        : `translate(${diagram.server.x - 105} ${diagram.server.y})`,
+    );
+    clientFilterOverlays.forEach((overlay) => {
+      overlay.toggleAttribute('hidden', !showAllClientFilters);
+      overlay.classList.toggle(
+        'is-active',
+        presentation.blockOverlayActive === true,
+      );
+      overlay.querySelector('.traffic-block-label').textContent =
+        presentation.blockOverlayLabel ?? blockOverlayLabel;
+    });
   }
 
   const playButton = section.querySelector('[data-action="play"]');

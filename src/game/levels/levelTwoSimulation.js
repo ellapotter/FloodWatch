@@ -1,449 +1,426 @@
 import { TrafficSimulation } from '../trafficSimulation.js';
 
 export class LevelTwoSimulation extends TrafficSimulation {
-  getPacketIdPrefix() {
-    return 'udp-packet';
-  }
+    getPacketIdPrefix() {return 'udp-packet';}
 
-  resetBehavior() {
-    this.activeClients = new Map();
-    this.nextClientId = 1;
-    this.incomingHistory = [];
-    this.admittedHistory = [];
-    this.dropHistory = [];
-    this.incomingUdpPacketsTotal = 0;
-    this.droppedPackets = 0;
-    this.droppedLegitimatePackets = 0;
-    this.processedUdpPackets = 0;
-    this.applicationResponses = 0;
-    this.attackDatagramsGenerated = 0;
-    this.completedExchanges = 0;
-    this.filteredAttackPackets = 0;
-    this.blockedUdpPackets = 0;
-    this.serverRateLimitedPackets = 0;
-    this.serverShutdown = false;
-    this.blockedIndicatorUntil = 0;
+    resetBehavior() {
+        this.activeClients = new Map();
+        this.nextClientId = 1;
+        this.incomingHistory = [];
+        this.admittedHistory = [];
+        this.dropHistory = [];
+        this.incomingUdpPacketsTotal = 0;
+        this.droppedPackets = 0;
+        this.droppedLegitimatePackets = 0;
+        this.processedUdpPackets = 0;
+        this.applicationResponses = 0;
+        this.attackDatagramsGenerated = 0;
+        this.completedExchanges = 0;
+        this.filteredAttackPackets = 0;
+        this.blockedUdpPackets = 0;
+        this.serverRateLimitedPackets = 0;
+        this.serverShutdown = false;
+        this.blockedIndicatorUntil = 0;
+        this.filteredIndicatorUntil = 0;
 
-    this.serverProcessingHistory = [];
-    this.effectiveCapacityKbps = this.configuration.capacityKbps;
+        this.serverProcessingHistory = [];
+        this.effectiveCapacityKbps = this.configuration.capacityKbps;
 
-    this.clientSlots.forEach((_, slotIndex) => {
-      this.schedule(
-        slotIndex * this.configuration.clientStartInterval,
-        'spawn-client',
-        { slotIndex },
-      );
-    });
-  }
-
-  makeClient(slotIndex, isAttackSource = false) {
-    const slot = this.clientSlots[slotIndex];
-    const number = this.nextClientId++;
-
-    return {
-      ...slot,
-      id: `udp-client-${number}`,
-      label: `Client ${number}`,
-      slotIndex,
-      isAttackSource,
-      disruptedUntil: 0,
-      awaitingResponse: false,
-      completedExchanges: 0,
-    };
-  }
-
-  spawnClient(slotIndex) {
-    const occupied = [...this.activeClients.values()].some(
-      (client) => client.slotIndex === slotIndex,
-    );
-
-    if (occupied) return;
-
-    const client = this.makeClient(slotIndex);
-    this.activeClients.set(client.id, client);
-
-    this.schedule(0, 'legitimate-send', { clientId: client.id });
-  }
-
-  removeClient(clientId, replace = true) {
-    const client = this.activeClients.get(clientId);
-    if (!client || client.isAttackSource) return;
-
-    this.activeClients.delete(clientId);
-
-    // Remove packets and events belonging to the old client.
-    this.deletePackets((packet) => packet.clientId === clientId);
-    this.cancelEvents((event) => event.clientId === clientId);
-
-    if (replace) {
-      this.schedule(this.configuration.replacementDelay, 'spawn-client', {
-        slotIndex: client.slotIndex,
-      });
-    }
-  }
-
-  createAttackClient(slotIndex) {
-    return this.makeClient(slotIndex, true);
-  }
-
-  getVisibleClients() {
-    return [...this.activeClients.values()].map((client) => ({
-      id: client.id,
-      label: client.label,
-      slotIndex: client.slotIndex,
-      state: 'communicating',
-      protocol: 'udp',
-      behavior: client.isAttackSource
-        ? 'suspicious'
-        : client.disruptedUntil > this.simulationTime
-          ? 'disrupted'
-          : 'normal',
-    }));
-  }
-
-  pruneHistory() {
-    const cutoff = this.simulationTime - this.configuration.statisticsWindow;
-
-    this.incomingHistory = this.incomingHistory.filter(
-      (event) => event.at > cutoff,
-    );
-    this.admittedHistory = this.admittedHistory.filter(
-      (event) => event.at > cutoff,
-    );
-    this.dropHistory = this.dropHistory.filter((time) => time > cutoff);
-  }
-
-  getWindowCapacityBytes() {
-    return (
-      ((this.effectiveCapacityKbps * 1000) / 8) *
-      (this.configuration.statisticsWindow / 1000)
-    );
-  }
-
-  admitDatagram(isAttack) {
-    const mitigation = this.activeMitigationId;
-
-    if (mitigation === 'apply-upstream-udp-filtering' && isAttack) {
-      this.filteredAttackPackets += 1;
-      return 'filtered';
+        this.clientSlots.forEach((_, slotIndex) => {
+            this.schedule(
+                slotIndex * this.configuration.clientStartInterval,
+                'spawn-client',
+                { slotIndex },
+            );
+        });
     }
 
-    if (mitigation === 'block-udp') {
-      this.blockedUdpPackets += 1;
-      this.blockedIndicatorUntil = this.simulationTime + 1200;
-      return 'blocked';
+    makeClient(slotIndex, isAttackSource = false) {
+        const slot = this.clientSlots[slotIndex];
+        const number = this.nextClientId++;
+
+        return {
+            ...slot,
+            id: `udp-client-${number}`,
+            label: `Client ${number}`,
+            slotIndex,
+            isAttackSource,
+            disruptedUntil: 0,
+            awaitingResponse: false,
+            completedExchanges: 0,
+        };
     }
 
-    this.pruneHistory();
+    spawnClient(slotIndex) {
+        const occupied = [...this.activeClients.values()].some((client) => client.slotIndex === slotIndex,);
 
-    const bytes = this.configuration.datagramSizeBytes;
+        if (occupied) return;
 
-    this.incomingUdpPacketsTotal += 1;
-    this.incomingHistory.push({ at: this.simulationTime, bytes });
+        const client = this.makeClient(slotIndex);
+        this.activeClients.set(client.id, client);
 
-    const admittedBytes = this.admittedHistory.reduce(
-      (total, event) => total + event.bytes,
-      0,
-    );
-
-    if (admittedBytes + bytes > this.getWindowCapacityBytes()) {
-      this.droppedPackets += 1;
-      this.dropHistory.push(this.simulationTime);
-
-      // Sustained packet loss causes the UDP service to become unresponsive.
-      if (!this.serverShutdown && this.dropHistory.length >= 2) {
-        this.serverShutdown = true;
-        this.simulationPhase = 'server-unresponsive';
-
-        // The server stops preparing new responses.
-        this.cancelEvents((event) => event.type === 'application-response');
-      }
-      return 'dropped';
+        this.schedule(0, 'legitimate-send', { clientId: client.id });
     }
 
-    this.admittedHistory.push({ at: this.simulationTime, bytes });
+    removeClient(clientId, replace = true) {
+        const client = this.activeClients.get(clientId);
+        if (!client || client.isAttackSource) return;
 
-    return 'admitted';
-  }
+        this.activeClients.delete(clientId);
 
-  sendDatagram(client, isAttack = false) {
-    if (isAttack) this.attackDatagramsGenerated += 1;
+        // Remove packets and events belonging to the old client.
+        this.deletePackets((packet) => packet.clientId === clientId);
+        this.cancelEvents((event) => event.clientId === clientId);
 
-    const outcome = this.admitDatagram(isAttack);
-
-    if (outcome !== 'admitted') {
-      if (!isAttack) {
-        if (outcome === 'dropped') this.droppedLegitimatePackets += 1;
-        this.disruptClient(client);
-      }
-      return;
+        if (replace) {
+            this.schedule(this.configuration.replacementDelay, 'spawn-client', {slotIndex: client.slotIndex,});
+        }
     }
 
-    this.spawnPacket('UDP Datagram', client, this.server, {
-      clientId: client.id,
-      isAttack,
-    });
-  }
+    createAttackClient(slotIndex) {return this.makeClient(slotIndex, true);}
 
-  sendLegitimateDatagram(client) {
-    if (client.awaitingResponse) return;
-
-    client.awaitingResponse = true;
-    this.sendDatagram(client, false);
-  }
-
-  sendFloodPacket(client) {
-    this.sendDatagram(client, true);
-  }
-
-  getFloodPacketType() {
-    return 'UDP Datagram';
-  }
-
-  disruptClient(client) {
-    if (!client || client.isAttackSource) return;
-    if (client.disruptedUntil > this.simulationTime) return;
-
-    client.awaitingResponse = false;
-
-    client.disruptedUntil =
-      this.simulationTime + this.configuration.clientDisruptionDuration;
-
-    this.schedule(
-      this.configuration.clientDisruptionDuration,
-      'remove-client',
-      { clientId: client.id },
-    );
-  }
-
-  canServerProcessRequest() {
-    if (this.activeMitigationId !== 'enable-udp-rate-limiting') return true;
-
-    const cutoff =
-      this.simulationTime - this.configuration.serverRateLimitWindow;
-
-    this.serverProcessingHistory = this.serverProcessingHistory.filter(
-      (time) => time > cutoff,
-    );
-
-    if (
-      this.serverProcessingHistory.length >=
-      this.configuration.serverRateLimitCount
-    ) {
-      this.serverRateLimitedPackets += 1;
-      return false;
+    getVisibleClients() {
+        return [...this.activeClients.values()].map((client) => ({
+            id: client.id,
+            label: client.label,
+            slotIndex: client.slotIndex,
+            state: 'communicating',
+            protocol: 'udp',
+            behavior: client.isAttackSource ? 'suspicious' : client.disruptedUntil > this.simulationTime ? 'disrupted' : 'normal',
+        }));
     }
 
-    this.serverProcessingHistory.push(this.simulationTime);
-    return true;
-  }
+    pruneHistory() {
+        const cutoff = this.simulationTime - this.configuration.statisticsWindow;
 
-  handleEvent(event) {
-    if (this.handleFloodEvent(event)) return;
+        this.incomingHistory = this.incomingHistory.filter((event) => event.at > cutoff,);
+        this.admittedHistory = this.admittedHistory.filter((event) => event.at > cutoff,);
+        this.dropHistory = this.dropHistory.filter((time) => time > cutoff);
+    } 
 
-    if (event.type === 'spawn-client') {
-      this.spawnClient(event.slotIndex);
-      return;
+    getWindowCapacityBytes() { return (((this.effectiveCapacityKbps * 1000) / 8) *(this.configuration.statisticsWindow / 1000));}
+
+    admitDatagram(client, isAttack) {
+        const mitigation = this.activeMitigationId;
+
+        if (mitigation === 'apply-upstream-udp-filtering') {
+            const clientPacketInFlight = [...this.activePackets.values()].some((packet) => packet.clientId === client.id && !packet.filteredAtSource,);
+            if (clientPacketInFlight) {
+                this.filteredAttackPackets += 1;
+                this.filteredIndicatorUntil = this.simulationTime + 1200;
+                return 'filtered';
+            }
+        }
+
+        if (mitigation === 'block-udp') {
+            this.blockedUdpPackets += 1;
+            this.blockedIndicatorUntil = this.simulationTime + 1200;
+            return 'blocked';
+        }
+
+        this.pruneHistory();
+
+        const bytes = this.configuration.datagramSizeBytes;
+
+        this.incomingUdpPacketsTotal += 1;
+        this.incomingHistory.push({ at: this.simulationTime, bytes });
+
+        if (this.serverShutdown && mitigation !== 'enable-udp-rate-limiting') {
+            this.droppedPackets += 1;
+            this.dropHistory.push(this.simulationTime);
+            return 'dropped';
+        }
+
+        const admittedBytes = this.admittedHistory.reduce((total, event) => total + event.bytes,0,);
+
+        if (admittedBytes + bytes > this.getWindowCapacityBytes()) {
+            this.droppedPackets += 1;
+            this.dropHistory.push(this.simulationTime);
+
+            if (!this.serverShutdown) {
+                this.serverShutdown = true;
+                this.simulationPhase = 'server-unresponsive';
+            }
+            return 'dropped';
+        }
+
+        this.admittedHistory.push({ at: this.simulationTime, bytes });
+
+        return 'admitted';
     }
 
-    const client = event.clientId
-      ? this.activeClients.get(event.clientId)
-      : null;
+    sendDatagram(client, isAttack = false) {
+        if (isAttack) this.attackDatagramsGenerated += 1;
 
-    if (!client) return;
-    if (event.type === 'legitimate-send') {
-      if (!client.isAttackSource) {
-        this.sendLegitimateDatagram(client);
-      }
-    } else if (event.type === 'application-response') {
-      if (this.serverShutdown || this.activeMitigationId === 'block-udp')
-        return;
+        const outcome = this.admitDatagram(client, isAttack);
 
-      this.applicationResponses += 1;
+        if (outcome !== 'admitted') {
+            if (outcome === 'blocked' || outcome === 'filtered' ||outcome === 'dropped') {
+                this.spawnPacket('UDP Datagram', client, this.server, {
+                    clientId: client.id,
+                    isAttack,
+                    blockedByPolicy: outcome === 'blocked',
+                    filteredAtSource: outcome === 'filtered',
+                    droppedByCapacity: outcome === 'dropped',
+                });
+            }
+            if (!isAttack) {
+                if (outcome === 'dropped') {
+                    this.droppedLegitimatePackets += 1;
+                }
+            }
+            return;
+        }   
 
-      this.spawnPacket('UDP Response', this.server, client, {
-        clientId: client.id,
-        isAttack: event.isAttack === true,
-      });
-    } else if (event.type === 'remove-client') {
-      this.removeClient(client.id);
-    }
-  }
-
-  handlePacketArrival(packet) {
-    const client = this.activeClients.get(packet.clientId);
-    if (!client) return;
-
-    if (packet.type === 'UDP Datagram') {
-      if (this.serverShutdown) {
-        if (!packet.isAttack) this.disruptClient(client);
-        return;
-      }
-      if (!this.canServerProcessRequest()) {
-        if (!packet.isAttack) this.disruptClient(client);
-        return;
-      }
-
-      this.processedUdpPackets += 1;
-
-      this.schedule(this.configuration.responseDelay, 'application-response', {
-        clientId: client.id,
-        isAttack: packet.isAttack,
-      });
-
-      return;
+        this.spawnPacket('UDP Datagram', client, this.server, {clientId: client.id,isAttack, });
     }
 
-    if (packet.type === 'UDP Response') {
-      if (client.isAttackSource) return;
+    sendLegitimateDatagram(client) {
+        if (client.awaitingResponse) return;
 
-      client.awaitingResponse = false;
-      client.completedExchanges += 1;
-      this.completedExchanges += 1;
+        client.awaitingResponse = true;
+        this.sendDatagram(client, false);
+    }
 
-      if (client.completedExchanges >= this.configuration.exchangesPerClient) {
-        this.removeClient(client.id);
-      } else {
+    sendFloodPacket(client) {
+        this.sendDatagram(client, true);
+        if (this.activeMitigationId === 'increase-bandwidth') this.sendDatagram(client, true);
+    }
+
+    getFloodPacketType() {return 'UDP Datagram';}
+
+    disruptClient(client) {
+        if (!client || client.isAttackSource) return;
+        if (client.disruptedUntil > this.simulationTime) return;
+
+        client.awaitingResponse = false;
+
+        client.disruptedUntil = this.simulationTime + this.configuration.clientDisruptionDuration;
+
         this.schedule(
-          this.configuration.normalTrafficInterval,
-          'legitimate-send',
-          { clientId: client.id },
+            this.configuration.clientDisruptionDuration,
+            'remove-client',
+            { clientId: client.id },
         );
-      }
     }
-  }
 
-  getMitigationActions() {
-    const apply = (id) => () => this.applyMitigationEffects(id);
+    canServerProcessRequest() {
+        if (this.activeMitigationId !== 'enable-udp-rate-limiting') return true;
 
-    return {
-      'apply-upstream-udp-filtering': apply('apply-upstream-udp-filtering'),
-      'block-udp': apply('block-udp'),
-      'increase-bandwidth': apply('increase-bandwidth'),
-      'enable-udp-rate-limiting': apply('enable-udp-rate-limiting'),
-    };
-  }
+        const cutoff = this.simulationTime - this.configuration.serverRateLimitWindow;
 
-  canApplyMitigation() {
-    return this.attackClientSlot !== null;
-  }
+        this.serverProcessingHistory = this.serverProcessingHistory.filter((time) => time > cutoff,);
 
-  applyMitigationEffects(mitigationId) {
-    this.effectiveCapacityKbps =
-      mitigationId === 'increase-bandwidth'
-        ? this.configuration.increasedCapacityKbps
-        : this.configuration.capacityKbps;
+        if (this.serverProcessingHistory.length >=this.configuration.serverRateLimitCount) {
+            this.serverRateLimitedPackets += 1;
+            return false;
+        }
 
-    this.serverProcessingHistory = [];
-    this.blockedIndicatorUntil = 0;
-    this.recoveryComplete = false;
-
-    if (mitigationId === 'apply-upstream-udp-filtering') {
-      this.serverShutdown = false;
-      this.simulationPhase = 'network-recovery';
-    } else if (mitigationId === 'block-udp') {
-      this.serverShutdown = true;
-      this.simulationPhase = 'mitigation-ineffective';
-    } else if (mitigationId === 'increase-bandwidth') {
-      this.serverShutdown = false;
-      this.simulationPhase = 'mitigation-ineffective';
-    } else if (mitigationId === 'enable-udp-rate-limiting') {
-      this.simulationPhase = 'mitigation-ineffective';
+        this.serverProcessingHistory.push(this.simulationTime);
+        return true;
     }
-  }
 
-  updateSimulationPhase() {
-    this.pruneHistory();
+    handleEvent(event) {
+        if (this.handleFloodEvent(event)) return;
 
-    if (this.activeMitigationId === 'apply-upstream-udp-filtering') {
-      const state = this.getState();
-      if (!state.congestionActive && state.bandwidthPercent <= 100) {
-        this.recoveryComplete = true;
-        this.simulationPhase = 'network-recovered';
-      } else {
-        this.simulationPhase = 'network-recovery';
-      }
-      return;
+        if (event.type === 'spawn-client') {
+            this.spawnClient(event.slotIndex);
+            return;
+        }
+
+        const client = event.clientId ? this.activeClients.get(event.clientId) : null;
+
+        if (!client) return;
+        if (event.type === 'legitimate-send') {
+            if (!client.isAttackSource) {
+                this.sendLegitimateDatagram(client);
+            }
+        } else if (event.type === 'application-response') {
+            if (this.activeMitigationId === 'block-udp') return;
+
+            this.applicationResponses += 1;
+
+            this.spawnPacket('UDP Response', this.server, client, {
+                clientId: client.id,
+                isAttack: event.isAttack === true,
+            });
+        } else if (event.type === 'remove-client') {
+                this.removeClient(client.id);
+        }
     }
-    if (this.activeMitigationId) {
-      this.simulationPhase = 'mitigation-ineffective';
-      return;
+
+    handlePacketArrival(packet) {
+        const client = this.activeClients.get(packet.clientId);
+        if (!client) return;
+
+        if (packet.type === 'UDP Datagram') {
+            if (packet.blockedByPolicy ||packet.filteredAtSource ||packet.droppedByCapacity) {
+                if (!packet.isAttack) this.disruptClient(client);
+                return;
+            }
+            if (!this.canServerProcessRequest()) {
+                if (!packet.isAttack) this.disruptClient(client);
+                return;
+            }
+
+            this.processedUdpPackets += 1;
+
+            this.schedule(this.configuration.responseDelay, 'application-response', {
+                clientId: client.id,
+                isAttack: packet.isAttack,
+            });
+
+            return;
+        }
+
+        if (packet.type === 'UDP Response') {
+            if (client.isAttackSource) return;
+
+            client.awaitingResponse = false;
+            client.completedExchanges += 1;
+            this.completedExchanges += 1;
+
+            if (client.completedExchanges >= this.configuration.exchangesPerClient) {
+                this.removeClient(client.id);
+            } else {
+                this.schedule(
+                    this.configuration.normalTrafficInterval,
+                    'legitimate-send',
+                    { clientId: client.id },
+                );
+            }
+        }
     }
-    if (this.serverShutdown) {
-      this.simulationPhase = 'server-unresponsive';
-      return;
+
+    getMitigationActions() {
+        const apply = (id) => () => this.applyMitigationEffects(id);
+
+        return {
+        'apply-upstream-udp-filtering': apply('apply-upstream-udp-filtering'),
+        'block-udp': apply('block-udp'),
+        'increase-bandwidth': apply('increase-bandwidth'),
+        'enable-udp-rate-limiting': apply('enable-udp-rate-limiting'),
+        };
     }
-    if (this.dropHistory.length > 0) {
-      this.simulationPhase = 'attack-established';
-    } else if (this.getState().highUtilizationActive) {
-      this.simulationPhase = 'network-pressure';
+
+    canApplyMitigation() {return this.attackClientSlot !== null;}
+
+    packetSnapshotExtras(packet) {
+        return {
+            willBeBlocked: packet.blockedByPolicy === true,
+            willBeFiltered: packet.filteredAtSource === true,
+            willBeDropped: packet.droppedByCapacity === true,
+        };
     }
-  }
 
-  getState() {
-    this.pruneHistory();
+    applyMitigationEffects(mitigationId) {
+        this.effectiveCapacityKbps = mitigationId === 'increase-bandwidth' ? this.configuration.increasedCapacityKbps : this.configuration.capacityKbps;
 
-    const windowSeconds = this.configuration.statisticsWindow / 1000;
+        this.serverProcessingHistory = [];
+        this.blockedIndicatorUntil = 0;
+        this.filteredIndicatorUntil = 0;
+        this.recoveryComplete = false;
 
-    const offeredBytes = this.incomingHistory.reduce(
-      (total, event) => total + event.bytes,
-      0,
-    );
+        if (mitigationId === 'apply-upstream-udp-filtering') {
+            this.serverShutdown = false;
+            this.simulationPhase = 'network-recovery';
+        } else if (mitigationId === 'block-udp') {
+            this.serverShutdown = true;
+            this.simulationPhase = 'mitigation-ineffective';
+        } else if (mitigationId === 'increase-bandwidth') {
+            this.serverShutdown = false;
+            this.simulationPhase = 'mitigation-ineffective';
+        } else if (mitigationId === 'enable-udp-rate-limiting') {
+            this.simulationPhase = 'mitigation-ineffective';
+        }
+    }
 
-    const bandwidthKbps = (offeredBytes * 8) / windowSeconds / 1000;
+    updateSimulationPhase() {
+        this.pruneHistory();
 
-    const bandwidthPercent = (bandwidthKbps / this.effectiveCapacityKbps) * 100;
+        if (this.activeMitigationId === 'apply-upstream-udp-filtering') {
+            const state = this.getState();
+            if (!state.congestionActive && state.bandwidthPercent <= 100) {
+                this.recoveryComplete = true;
+                this.simulationPhase = 'network-recovered';
+            } else {
+                this.simulationPhase = 'network-recovery';
+            }
+            return;
+        }
+        if (this.activeMitigationId) {
+            this.simulationPhase = 'mitigation-ineffective';
+            return;
+        }
+        if (this.serverShutdown) {
+            this.simulationPhase = 'server-unresponsive';
+            return;
+        }
+        if (this.dropHistory.length > 0) {
+            this.simulationPhase = 'attack-established';
+        } else if (this.getState().highUtilizationActive) {
+            this.simulationPhase = 'network-pressure';
+        }
+    }
 
-    const congestionActive = this.dropHistory.length > 0;
+    getState() {
+        this.pruneHistory();
 
-    const filteringActive =
-      this.activeMitigationId === 'apply-upstream-udp-filtering';
+        const windowSeconds = this.configuration.statisticsWindow / 1000;
 
-    return {
-      isPlaying: this.isPlaying,
-      simulationPhase: this.simulationPhase,
-      visibleClients: this.getVisibleClients(),
-      activePackets: this.getPackets(),
-      incomingUdpPacketsTotal: this.incomingUdpPacketsTotal,
-      droppedPackets: this.droppedPackets,
-      droppedLegitimatePackets: this.droppedLegitimatePackets,
-      bandwidthKbps,
-      bandwidthPercent,
-      networkCapacityKbps: this.effectiveCapacityKbps,
+        const offeredBytes = this.incomingHistory.reduce((total, event) => total + event.bytes,0, );
 
-      congestionActive,
-      highUtilizationActive: bandwidthPercent >= 80,
-      serverUnderPressure: congestionActive || bandwidthPercent >= 80,
+        const bandwidthKbps = (offeredBytes * 8) / windowSeconds / 1000;
 
-      processedUdpPackets: this.processedUdpPackets,
-      applicationResponses: this.applicationResponses,
-      completedExchanges: this.completedExchanges,
+        const bandwidthPercent = (bandwidthKbps / this.effectiveCapacityKbps) * 100;
 
-      attackDatagramsGenerated: this.attackDatagramsGenerated,
-      attackClientSlot: this.attackClientSlot,
+        const congestionActive = this.dropHistory.length > 0;
 
-      filteredAttackPackets: this.filteredAttackPackets,
-      blockedUdpPackets: this.blockedUdpPackets,
-      serverRateLimitedPackets: this.serverRateLimitedPackets,
+        const filteringActive = this.activeMitigationId === 'apply-upstream-udp-filtering';
 
-      upstreamFilteringActive: filteringActive,
-      udpTrafficBlocked: this.activeMitigationId === 'block-udp',
-      rateLimitingActive:
-        this.activeMitigationId === 'enable-udp-rate-limiting',
+        return {
+            isPlaying: this.isPlaying,
+            simulationPhase: this.simulationPhase,
+            visibleClients: this.getVisibleClients(),
+            activePackets: this.getPackets(),
+            incomingUdpPacketsTotal: this.incomingUdpPacketsTotal,
+            droppedPackets: this.droppedPackets,
+            droppedLegitimatePackets: this.droppedLegitimatePackets,
+            bandwidthKbps,
+            bandwidthPercent,
+            networkCapacityKbps: this.effectiveCapacityKbps,
 
-      recoveryComplete: this.recoveryComplete,
-      activeMitigationId: this.activeMitigationId,
-      serverShutdown: this.serverShutdown,
+            congestionActive,
+            highUtilizationActive: bandwidthPercent >= 80,
+            serverUnderPressure: congestionActive || bandwidthPercent >= 80,
 
-      blockedIndicatorActive: this.simulationTime < this.blockedIndicatorUntil,
+            processedUdpPackets: this.processedUdpPackets,
+            applicationResponses: this.applicationResponses,
+            completedExchanges: this.completedExchanges,
 
-      udpTrafficBlocked: this.activeMitigationId === 'block-udp',
+            attackDatagramsGenerated: this.attackDatagramsGenerated,
+            attackClientSlot: this.attackClientSlot,
 
-      upstreamFilteringActive:
-        this.activeMitigationId === 'apply-upstream-udp-filtering',
+            filteredAttackPackets: this.filteredAttackPackets,
+            blockedUdpPackets: this.blockedUdpPackets,
+            serverRateLimitedPackets: this.serverRateLimitedPackets,
 
-      rateLimitingActive:
-        this.activeMitigationId === 'enable-udp-rate-limiting',
-    };
-  }
+            upstreamFilteringActive: filteringActive,
+            udpTrafficBlocked: this.activeMitigationId === 'block-udp',
+            rateLimitingActive: this.activeMitigationId === 'enable-udp-rate-limiting',
+
+            recoveryComplete: this.recoveryComplete,
+            activeMitigationId: this.activeMitigationId,
+            serverShutdown: this.serverShutdown,
+
+            blockedIndicatorActive: this.simulationTime < this.blockedIndicatorUntil,
+            filteredIndicatorActive: this.simulationTime < this.filteredIndicatorUntil,
+
+            udpTrafficBlocked: this.activeMitigationId === 'block-udp',
+
+            upstreamFilteringActive: this.activeMitigationId === 'apply-upstream-udp-filtering',
+
+            rateLimitingActive: this.activeMitigationId === 'enable-udp-rate-limiting',
+        };
+    }
 }
