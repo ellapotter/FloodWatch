@@ -32,9 +32,6 @@ export const levelTwoSimulation = Object.freeze({
     // Fixed-rate UDP flood.
     floodInterval: 1000,
 
-    // Simplified server-side request limiter.
-    serverRateLimitWindow: 4000,
-    serverRateLimitCount: 3,
 });
 
 export function createLevelTwoNetworkSimulation(options) {
@@ -88,7 +85,6 @@ function getLevelTwoServerState(state) {
     if (state.udpTrafficBlocked) statusLabel = 'UDP Blocked';
     else if (state.upstreamFilteringActive) statusLabel = state.recoveryComplete ? 'Traffic Normal' : 'Filtering UDP';
     else if (state.activeMitigationId === 'increase-bandwidth') statusLabel = state.serverShutdown ? 'Server Unresponsive' : 'Bandwidth Increased';
-    else if (state.rateLimitingActive) statusLabel = state.serverShutdown? 'Rate Limiting - Unresponsive': 'Rate Limiting';
     else if (state.serverShutdown) statusLabel = 'Server Unresponsive';
     else if (state.congestionActive) statusLabel = 'Congested';
     else if (state.highUtilizationActive) statusLabel = 'High Traffic';
@@ -165,7 +161,6 @@ export const levelTwoMission = defineNetworkMission({
         getLabel(state) {
             if (state.upstreamFilteringActive) return state.recoveryComplete ? 'Upstream UDP Filter: Network Stabilized' : 'Upstream UDP Filter: Active';
             if (state.udpTrafficBlocked) return 'Inbound UDP Block: Active';
-            if (state.rateLimitingActive) return 'Server UDP Rate Limit: Active';
             if (state.activeMitigationId === 'increase-bandwidth') return 'Network Bandwidth Increased';
 
             return 'Mitigation Active';

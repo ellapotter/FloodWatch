@@ -147,11 +147,5 @@ export const levelTwoMitigations = {
       name: 'Increase Bandwidth',
       feedback:'Incorrect. Increasing the available network bandwidth allows the network to carry more traffic before becoming congested. This may temporarily improve performance and help the server handle a large volume of incoming packets. However, it does not identify or remove the malicious traffic. If the attacker continues sending more datagrams than the network can handle, the increased capacity may eventually become overwhelmed as well. Increasing bandwidth can be helpful as part of a larger defense strategy, but it does not directly stop the attack.',
     },
-
-    {
-      id: 'enable-udp-rate-limiting',
-      name: 'Enable UDP Rate Limiting',
-      feedback:'Incorrect. Rate limiting controls how much traffic a server or network device will accept or process during a certain amount of time. This can protect the server from excessive packet processing and reduce the resources used by unwanted traffic. However, if the attack has already overwhelmed the network connection leading to the server, rate limiting at the server will not prevent the packets from consuming the incoming bandwidth. In this mission, the traffic needs to be filtered before it reaches the congested network link.',
-    },
   ],
 };

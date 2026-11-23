@@ -162,10 +162,15 @@ export function createNetworkObserverPanel({
     'transform',
     `translate(${diagram.server.x - 105} ${diagram.server.y})`,
   );
+  // Upstream filters sit just beyond the point where filtered packet cards stop.
+  const clientFilterOffset = 165;
   const clientFilterOverlays = diagram.clients.map((client) => {
     const overlay = blockOverlay.cloneNode(true);
     overlay.hidden = true;
-    overlay.setAttribute('transform', `translate(${client.x + 105} ${client.y})`);
+    overlay.setAttribute(
+      'transform',
+      `translate(${client.x + clientFilterOffset} ${client.y})`,
+    );
     blockOverlay.parentNode.insertBefore(overlay, blockOverlay);
     return overlay;
   });
