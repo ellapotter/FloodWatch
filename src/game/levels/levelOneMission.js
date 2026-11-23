@@ -22,7 +22,9 @@ import {
 export const levelOneSimulation = Object.freeze({
   ...networkSimulationTiming,
   backlogCapacity: 5, // The maximum number of pending half-open connections before the server starts dropping new SYN packets
-  increasedBacklogCapacity: 10, // The maximum number of pending half-open connections after the increase backlog mitigation is applied    blockedIndicatorDuration: 1200, // The amount of time the blocked TCP indicator is shown after TCP is blocked by mitigation   pendingConnectionTimeout: 10000, // The amount of time a pending connection will wait before being dropped
+  increasedBacklogCapacity: 10, // The maximum number of pending half-open connections after the increase backlog mitigation is applied
+  blockedIndicatorDuration: 1200, // The amount of time the blocked TCP indicator is shown after TCP is blocked by mitigation
+  pendingConnectionTimeout: 10000, // The amount of time a pending connection will wait before being dropped
   dataPacketsPerConnection: 4, // The number of data packets sent after a connection is established
   replacementDelay: 1000, // The amount of time after a client is dropped before a new one appears
   repeatedSynEvidenceThreshold: 3, // The number of repeated SYN packets that must be sent before the repeated SYN evidence is revealed
