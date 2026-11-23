@@ -18,12 +18,10 @@ export class LevelTwoSimulation extends TrafficSimulation {
         this.completedExchanges = 0;
         this.filteredAttackPackets = 0;
         this.blockedUdpPackets = 0;
-        this.serverRateLimitedPackets = 0;
         this.serverShutdown = false;
         this.blockedIndicatorUntil = 0;
         this.filteredIndicatorUntil = 0;
 
-        this.serverProcessingHistory = [];
         this.effectiveCapacityKbps = this.configuration.capacityKbps;
 
         this.clientSlots.forEach((_, slotIndex) => {
@@ -125,7 +123,7 @@ export class LevelTwoSimulation extends TrafficSimulation {
         this.incomingUdpPacketsTotal += 1;
         this.incomingHistory.push({ at: this.simulationTime, bytes });
 
-        if (this.serverShutdown && mitigation !== 'enable-udp-rate-limiting') {
+        if (this.serverShutdown) {
             this.droppedPackets += 1;
             this.dropHistory.push(this.simulationTime);
             return 'dropped';
@@ -149,13 +147,13 @@ export class LevelTwoSimulation extends TrafficSimulation {
         return 'admitted';
     }
 
-    sendDatagram(client, isAttack = false) {
+    sendDatagram(client, isAttack = false, animate = true) {
         if (isAttack) this.attackDatagramsGenerated += 1;
 
         const outcome = this.admitDatagram(client, isAttack);
 
         if (outcome !== 'admitted') {
-            if (outcome === 'blocked' || outcome === 'filtered' ||outcome === 'dropped') {
+            if (animate && (outcome === 'blocked' || outcome === 'filtered' ||outcome === 'dropped')) {
                 this.spawnPacket('UDP Datagram', client, this.server, {
                     clientId: client.id,
                     isAttack,
@@ -172,7 +170,9 @@ export class LevelTwoSimulation extends TrafficSimulation {
             return;
         }   
 
-        this.spawnPacket('UDP Datagram', client, this.server, {clientId: client.id,isAttack, });
+        if (animate) {
+            this.spawnPacket('UDP Datagram', client, this.server, {clientId: client.id,isAttack, });
+        }
     }
 
     sendLegitimateDatagram(client) {
@@ -184,7 +184,9 @@ export class LevelTwoSimulation extends TrafficSimulation {
 
     sendFloodPacket(client) {
         this.sendDatagram(client, true);
-        if (this.activeMitigationId === 'increase-bandwidth') this.sendDatagram(client, true);
+        // The extra flood traffic still consumes capacity without adding a
+        // second overlapping packet card to the network diagram.
+        if (this.activeMitigationId === 'increase-bandwidth') this.sendDatagram(client, true, false);
     }
 
     getFloodPacketType() {return 'UDP Datagram';}
@@ -202,22 +204,6 @@ export class LevelTwoSimulation extends TrafficSimulation {
             'remove-client',
             { clientId: client.id },
         );
-    }
-
-    canServerProcessRequest() {
-        if (this.activeMitigationId !== 'enable-udp-rate-limiting') return true;
-
-        const cutoff = this.simulationTime - this.configuration.serverRateLimitWindow;
-
-        this.serverProcessingHistory = this.serverProcessingHistory.filter((time) => time > cutoff,);
-
-        if (this.serverProcessingHistory.length >=this.configuration.serverRateLimitCount) {
-            this.serverRateLimitedPackets += 1;
-            return false;
-        }
-
-        this.serverProcessingHistory.push(this.simulationTime);
-        return true;
     }
 
     handleEvent(event) {
@@ -258,11 +244,6 @@ export class LevelTwoSimulation extends TrafficSimulation {
                 if (!packet.isAttack) this.disruptClient(client);
                 return;
             }
-            if (!this.canServerProcessRequest()) {
-                if (!packet.isAttack) this.disruptClient(client);
-                return;
-            }
-
             this.processedUdpPackets += 1;
 
             this.schedule(this.configuration.responseDelay, 'application-response', {
@@ -299,7 +280,6 @@ export class LevelTwoSimulation extends TrafficSimulation {
         'apply-upstream-udp-filtering': apply('apply-upstream-udp-filtering'),
         'block-udp': apply('block-udp'),
         'increase-bandwidth': apply('increase-bandwidth'),
-        'enable-udp-rate-limiting': apply('enable-udp-rate-limiting'),
         };
     }
 
@@ -309,14 +289,12 @@ export class LevelTwoSimulation extends TrafficSimulation {
         return {
             willBeBlocked: packet.blockedByPolicy === true,
             willBeFiltered: packet.filteredAtSource === true,
-            willBeDropped: packet.droppedByCapacity === true,
         };
     }
 
     applyMitigationEffects(mitigationId) {
         this.effectiveCapacityKbps = mitigationId === 'increase-bandwidth' ? this.configuration.increasedCapacityKbps : this.configuration.capacityKbps;
 
-        this.serverProcessingHistory = [];
         this.blockedIndicatorUntil = 0;
         this.filteredIndicatorUntil = 0;
         this.recoveryComplete = false;
@@ -329,8 +307,6 @@ export class LevelTwoSimulation extends TrafficSimulation {
             this.simulationPhase = 'mitigation-ineffective';
         } else if (mitigationId === 'increase-bandwidth') {
             this.serverShutdown = false;
-            this.simulationPhase = 'mitigation-ineffective';
-        } else if (mitigationId === 'enable-udp-rate-limiting') {
             this.simulationPhase = 'mitigation-ineffective';
         }
     }
@@ -403,11 +379,9 @@ export class LevelTwoSimulation extends TrafficSimulation {
 
             filteredAttackPackets: this.filteredAttackPackets,
             blockedUdpPackets: this.blockedUdpPackets,
-            serverRateLimitedPackets: this.serverRateLimitedPackets,
 
             upstreamFilteringActive: filteringActive,
             udpTrafficBlocked: this.activeMitigationId === 'block-udp',
-            rateLimitingActive: this.activeMitigationId === 'enable-udp-rate-limiting',
 
             recoveryComplete: this.recoveryComplete,
             activeMitigationId: this.activeMitigationId,
@@ -419,8 +393,6 @@ export class LevelTwoSimulation extends TrafficSimulation {
             udpTrafficBlocked: this.activeMitigationId === 'block-udp',
 
             upstreamFilteringActive: this.activeMitigationId === 'apply-upstream-udp-filtering',
-
-            rateLimitingActive: this.activeMitigationId === 'enable-udp-rate-limiting',
         };
     }
 }
