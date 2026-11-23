@@ -1,6 +1,6 @@
 /**
  * Connects the shared mission page to Level 1's SYN flood implementation.
- * Protocol-specific behavior stays here so the page coordinator does not need
+ * Protocol-specific behavior stays here so the page logic does not need
  * to know about TCP backlogs, SYN cookies, or Level 1 evidence rules.
  */
 import {

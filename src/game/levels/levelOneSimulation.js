@@ -2,10 +2,10 @@ import { TrafficSimulation } from '../trafficSimulation.js';
 
 /**
  * Runs the Level 1 TCP handshake, backlog, and SYN flood behavior.
- * Shared timing, packet motion, and mitigation dispatch live in TrafficSimulation.
+ * Shared timing, packet motion, and mitigationlogic are in TrafficSimulation.
  */
 export class LevelOneSimulation extends TrafficSimulation {
-  /** Restores TCP clients, the backlog, and the first connection attempts. */
+  // Restores TCP clients, the backlog, and the first connection attempts.
   resetBehavior() {
     this.activeClients = new Map();
     this.backlog = [];
@@ -48,7 +48,7 @@ export class LevelOneSimulation extends TrafficSimulation {
     return this.simulationPhase !== 'normal-traffic';
   }
 
-  /** Applies one Level 1 defense and records whether it stops the incomplete handshakes. */
+  // Applies one Level 1 defense and records whether it stops the incomplete handshakes.
   applyMitigationEffects(mitigationId) {
     this.synCookieProtectionActive = mitigationId === 'enable-syn-cookies';
     this.tcpTrafficBlocked = mitigationId === 'block-all-tcp-traffic';
@@ -69,7 +69,6 @@ export class LevelOneSimulation extends TrafficSimulation {
     }
   }
 
-  /** Returns a serializable snapshot consumed by mission components. */
   getState() {
     const visibleClients = this.getVisibleClients();
     const displayedPendingHalfOpenConnections = this.serverShutdown
@@ -254,7 +253,7 @@ export class LevelOneSimulation extends TrafficSimulation {
     });
   }
 
-  /** Applies protocol state changes only when an animated packet reaches its destination. */
+  // Applies state changes only when an animated packet reaches its destination.
   handlePacketArrival(packet) {
     const client = this.activeClients.get(packet.sessionId);
 
@@ -411,11 +410,7 @@ export class LevelOneSimulation extends TrafficSimulation {
       this.simulationPhase = 'backlog-pressure';
     }
   }
-
-  /**
-   * Declares recovery complete after old backlog state drains, attack traffic
-   * continues, and a legitimate client succeeds while SYN cookies are active.
-   */
+  
   updateRecoveryState() {
     if (!this.synCookieProtectionActive || this.recoveryComplete) return;
     if (
