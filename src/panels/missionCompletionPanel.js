@@ -1,4 +1,3 @@
-import { setGlossaryText } from '../glossary/glossaryText.js';
 import { decorateHeading, panelIconMappings } from '../icons/iconSystem.js';
 
 // Creates the mission summary shown after the network has recovered.
@@ -45,8 +44,8 @@ export function createMissionCompletionPanel({
   );
   section.querySelector('#completion-attack-title').textContent = attackName;
   section.querySelector('#completion-defense-title').textContent = defenseName;
-  setGlossaryText(section.querySelector('[data-summary="attack"]'), attackSummary);
-  setGlossaryText(section.querySelector('[data-summary="defense"]'), defenseSummary);
+  section.querySelector('[data-summary="attack"]').textContent = attackSummary;
+  section.querySelector('[data-summary="defense"]').textContent = defenseSummary;
 
   section.querySelector('[data-action="home"]').addEventListener('click', onReturnHome);
   const continueButton = section.querySelector('[data-action="continue"]');

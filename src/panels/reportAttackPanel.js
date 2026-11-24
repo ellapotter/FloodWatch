@@ -1,8 +1,7 @@
 
 import { createReportState } from '../game/gameEngine.js';
-import { setGlossaryText } from '../glossary/glossaryText.js';
 import { createEvidenceList } from './investigationPanel.js';
-import { renderChoiceCards } from './choiceCards.js';
+import { renderChoiceCards, shuffleChoices } from './choiceCards.js';
 import {
   decorateHeading,
   panelIconMappings,
@@ -20,6 +19,7 @@ export function createReportAttackPanel({
   const feedbackDialog = document.createElement('dialog');
   const reportState = createReportState(configuration);
   let activeFeedback = null;
+  let choiceOrder = [];
   section.className = 'panel report-panel';
   feedbackDialog.className = 'panel feedback-dialog';
   container.append(section, feedbackDialog);
@@ -45,7 +45,7 @@ export function createReportAttackPanel({
         ${result.isCorrect ? 'Continue to Mitigation' : 'Review Choices'}
       </button>
     `;
-    setGlossaryText(feedbackDialog.querySelector('p'), result.message);
+    feedbackDialog.querySelector('p').textContent = result.message;
 
 
     feedbackDialog.querySelector('.feedback-action').addEventListener('click', () => {
@@ -86,13 +86,14 @@ export function createReportAttackPanel({
 
     `;
 
-    setGlossaryText(section.querySelector('.report-prompt'), configuration.prompt);
+    section.querySelector('.report-prompt').textContent = configuration.prompt;
     decorateHeading(section.querySelector('.section-heading h2'), panelIconMappings.report);
     const evidenceContent = section.querySelector('.report-evidence-content');
     if (evidenceItems.length) {
       evidenceContent.append(createEvidenceList(
         evidenceItems,
         'evidence-list evidence-list--review',
+        { enableGlossary: false },
       ));
     } else {
       const empty = document.createElement('p');
@@ -102,11 +103,12 @@ export function createReportAttackPanel({
 
     const choices = section.querySelector('.attack-choices');
     renderChoiceCards(choices, {
-      choices: configuration.choices,
+      choices: choiceOrder,
       inputName: 'attack-choice',
       selectedChoiceId: state.selectedChoiceId,
       cardClass: 'attack-choice',
       includeDescriptions: true,
+      enableGlossary: false,
       onSelect(choiceId) {
         reportState.select(choiceId);
         section.querySelector('.submit-report').disabled = false;
@@ -129,6 +131,7 @@ export function createReportAttackPanel({
     element: container,
    
     open(evidenceItems) {
+      choiceOrder = shuffleChoices(configuration.choices);
       render(evidenceItems);
       if (!section.open) section.showModal();
     },
@@ -141,6 +144,7 @@ export function createReportAttackPanel({
     
     reset() {
       reportState.reset();
+      choiceOrder = [];
       if (feedbackDialog.open) feedbackDialog.close();
       activeFeedback = null;
       if (section.open) section.close();

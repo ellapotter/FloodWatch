@@ -8,14 +8,19 @@ import {
   panelIconMappings,
 } from '../icons/iconSystem.js';
 
-export function createEvidenceList(evidenceItems, className = 'evidence-list') {
+export function createEvidenceList(
+  evidenceItems,
+  className = 'evidence-list',
+  { enableGlossary = true } = {},
+) {
   const list = document.createElement('ul');
   list.className = className;
   list.append(...evidenceItems.map((evidence) => {
     const item = document.createElement('li');
     const description = document.createElement('span');
     description.className = 'evidence-list__description';
-    setGlossaryText(description, evidence.description);
+    if (enableGlossary) setGlossaryText(description, evidence.description);
+    else description.textContent = evidence.description;
     item.append(createEvidenceIcon(evidence), description);
     return item;
   }));

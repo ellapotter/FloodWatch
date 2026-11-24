@@ -4,7 +4,7 @@
 import { createMitigationState } from '../game/gameEngine.js';
 import { setGlossaryText } from '../glossary/glossaryText.js';
 import { decorateHeading, panelIconMappings } from '../icons/iconSystem.js';
-import { renderChoiceCards } from './choiceCards.js';
+import { renderChoiceCards, shuffleChoices } from './choiceCards.js';
 
 // Creates the mitigation choices and the panel that displays their results.
 export function createMitigationPanel({
@@ -16,6 +16,7 @@ export function createMitigationPanel({
   const statusSection = document.createElement('section');
   const mitigationState = createMitigationState(configuration);
   let displayedRecoveryState = 'inactive';
+  let choiceOrder = shuffleChoices(configuration.choices);
   section.className = 'panel mitigation-panel';
   statusSection.className = 'panel mitigation-status';
 
@@ -73,7 +74,7 @@ export function createMitigationPanel({
     decorateHeading(section.querySelector('.section-heading h2'), panelIconMappings.mitigation);
     const choices = section.querySelector('.mitigation-choices');
     renderChoiceCards(choices, {
-      choices: configuration.choices,
+      choices: choiceOrder,
       inputName: 'mitigation-choice',
       selectedChoiceId: state.selectedChoiceId,
       cardClass: 'mitigation-choice',
@@ -103,6 +104,7 @@ export function createMitigationPanel({
     reset() {
       mitigationState.reset();
       displayedRecoveryState = 'inactive';
+      choiceOrder = shuffleChoices(configuration.choices);
       render();
       renderStatus();
     },

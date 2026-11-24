@@ -1,5 +1,6 @@
 import { levelOneMission } from '../game/levels/levelOneMission.js';
 import { levelTwoMission } from '../game/levels/levelTwoMission.js';
+import { levelThreeMission } from '../game/levels/levelThreeMission.js';
 import {
   createIcon,
   decorateHeading,
@@ -33,6 +34,7 @@ export const missions = [
     title: 'HTTP Flood',
     description:
       'Learn how repeated website requests can overload a web server.',
+    definition: levelThreeMission,
   },
   {
     id: 'dns-amplification',

@@ -1,5 +1,15 @@
 import { setGlossaryText } from '../glossary/glossaryText.js';
 
+// Returns a shuffled copy so mission configuration order and answer IDs stay unchanged.
+export function shuffleChoices(choices, random = Math.random) {
+  const shuffled = [...choices];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  return shuffled;
+}
+
 /** Renders the accessible radio-card pattern shared by report and mitigation forms. */
 export function renderChoiceCards(container, {
   choices,
@@ -7,6 +17,7 @@ export function renderChoiceCards(container, {
   selectedChoiceId,
   cardClass,
   includeDescriptions = false,
+  enableGlossary = true,
   onSelect,
 }) {
   const cards = choices.map((choice) => {
@@ -29,7 +40,8 @@ export function renderChoiceCards(container, {
 
     if (includeDescriptions) {
       const description = document.createElement('p');
-      setGlossaryText(description, choice.description);
+      if (enableGlossary) setGlossaryText(description, choice.description);
+      else description.textContent = choice.description;
       card.append(description);
     }
     return card;

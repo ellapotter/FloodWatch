@@ -22,11 +22,7 @@ export class LevelOneSimulation extends TrafficSimulation {
     this.blockedIndicatorUntil = 0;
     this.attackContinuedAfterMitigation = false;
     this.protectedHandshakeCompleted = false;
-    this.clientSlots.forEach((_, slotIndex) => {
-      this.schedule(slotIndex * this.configuration.clientStartInterval, 'spawn-client', {
-        slotIndex,
-      });
-    });
+    this.scheduleInitialClients();
   }
 
   getTiming() { return { ...super.getTiming(), waitDuration: this.configuration.responseDelay / this.speedMultiplier, };}
@@ -149,7 +145,8 @@ export class LevelOneSimulation extends TrafficSimulation {
 
   // Places a new client in an empty diagram slot and starts its connection.
   spawnClient(slotIndex) {
-    if ([...this.activeClients.values()].some((client) => client.slotIndex === slotIndex)) return;
+    if (this.isClientSlotOccupied(slotIndex)) return;
+    if (this.shouldSpawnAttackClient(slotIndex)) return;
   
 
     const slot = this.clientSlots[slotIndex];
@@ -170,16 +167,8 @@ export class LevelOneSimulation extends TrafficSimulation {
     this.beginLegitimateHandshake(client);
   }
 
-  // Removes a client and optionally schedules a replacement for its slot.
-  removeClient(sessionId, replace = true) {
-    const client = this.activeClients.get(sessionId);
-    if (!client) return;
-    this.activeClients.delete(sessionId);
-    this.backlog = this.backlog.filter((entry) => entry.clientId !== sessionId);
-    this.deletePackets((packet) => packet.sessionId === sessionId);
-    this.cancelEvents((event) => event.sessionId === sessionId);
-    if (replace) this.schedule(this.configuration.replacementDelay, 'spawn-client', {slotIndex: client.slotIndex,});
-  
+  onClientRemoved(client) {
+    this.backlog = this.backlog.filter((entry) => entry.clientId !== client.id);
   }
 
   // Creates the TCP-specific state for a new attack-only client.

@@ -43,6 +43,8 @@ export class TrafficSimulation extends EventDrivenNetworkSimulation {
     this.activeMitigationId = null;
     this.recoveryComplete = false;
     this.attackClientSlot = null;
+    this.pendingAttackClientOrdinal = null;
+    this.clientsAppearedAfterAttackSelection = 0;
     this.serverShutdown = false;
     const attackDelayOptions = this.configuration.attackStartDelayOptions;
     this.attackStartsAt = Array.isArray(attackDelayOptions) && attackDelayOptions.length > 0
@@ -107,6 +109,47 @@ export class TrafficSimulation extends EventDrivenNetworkSimulation {
     return false;
   }
 
+  getClientInSlot(slotIndex) {
+    return [...this.activeClients.values()].find(
+      (client) => client.slotIndex === slotIndex,
+    ) ?? null;
+  }
+
+  isClientSlotOccupied(slotIndex) {
+    return this.getClientInSlot(slotIndex) !== null;
+  }
+
+  scheduleInitialClients() {
+    this.clientSlots.forEach((_, slotIndex) => {
+      this.schedule(this.configuration.clientStartInterval * slotIndex, 'spawn-client', {
+        slotIndex,
+      });
+    });
+  }
+
+  scheduleReplacementClient(slotIndex) {
+    this.schedule(this.configuration.replacementDelay, 'spawn-client', { slotIndex });
+  }
+
+  // Removes shared client traffic while leaving protocol-specific cleanup to a hook.
+  removeClient(clientId, replace = true) {
+    const client = this.activeClients.get(clientId);
+    if (!client) return null;
+
+    this.activeClients.delete(clientId);
+    this.deletePackets(
+      (packet) => packet.clientId === clientId || packet.sessionId === clientId,
+    );
+    this.cancelEvents(
+      (event) => event.clientId === clientId || event.sessionId === clientId,
+    );
+    this.onClientRemoved(client);
+    if (replace) this.scheduleReplacementClient(client.slotIndex);
+    return client;
+  }
+
+  onClientRemoved() {}
+
   // Chooses client slot to be the attacker
   selectAttackSlot(optionCount = this.clientSlots.length) {
     if (this.attackClientSlot === null) {
@@ -115,23 +158,28 @@ export class TrafficSimulation extends EventDrivenNetworkSimulation {
     return this.attackClientSlot;
   }
 
-  // Replaces a randomly selected legitimate client with a new attack-only session.
+  // After normal traffic has run long enough, chooses which upcoming client becomes the attacker.
   maybeStartAttack() {
-    if (this.simulationPhase !== 'normal-traffic') return;
+    if (this.attackClientSlot !== null) return;
+    if (this.pendingAttackClientOrdinal !== null) return;
     if (this.simulationTime < this.attackStartsAt) return;
+    this.pendingAttackClientOrdinal = Math.floor(this.random() * 3) + 1;
+  }
 
-    const attackSlot = this.selectAttackSlot(this.clientSlots.length);
-    const existingClient = [...this.activeClients.values()].find(
-      (client) => client.slotIndex === attackSlot,
-    );
-    if (!existingClient) {
-      this.attackClientSlot = null;
-      return;
+  // Returns true when this empty-slot arrival is the randomly chosen upcoming attacker.
+  shouldSpawnAttackClient(slotIndex) {
+    if (this.attackClientSlot !== null || this.pendingAttackClientOrdinal === null) {
+      return false;
     }
-
-    this.removeClient(existingClient.id, false);
-    this.spawnAttackClient(attackSlot);
+    this.clientsAppearedAfterAttackSelection += 1;
+    if (this.clientsAppearedAfterAttackSelection < this.pendingAttackClientOrdinal) {
+      return false;
+    }
+    this.attackClientSlot = slotIndex;
+    this.pendingAttackClientOrdinal = null;
+    this.spawnAttackClient(slotIndex);
     this.simulationPhase = 'attack-begins';
+    return true;
   }
 
   // Registers a protocol-specific attacker and starts only its attack traffic.

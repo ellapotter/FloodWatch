@@ -10,6 +10,9 @@ export function createNetworkStatisticsPanel(statistics) {
   section.setAttribute('aria-labelledby', 'statistics-title');
   section.innerHTML = `
     <h2 id="statistics-title">Network Statistics</h2>
+    <p class="statistics-simulation-note">
+      <strong>Simulation note:</strong> Timing, traffic rates, capacity limits, and statistics are simplified and scaled for educational purposes. They do not represent real-world network performance or operational thresholds.
+    </p>
     <dl class="statistics-list"></dl>
   `;
   decorateHeading(section.querySelector('#statistics-title'), panelIconMappings.statistics);

@@ -24,13 +24,7 @@ export class LevelTwoSimulation extends TrafficSimulation {
 
         this.effectiveCapacityKbps = this.configuration.capacityKbps;
 
-        this.clientSlots.forEach((_, slotIndex) => {
-            this.schedule(
-                slotIndex * this.configuration.clientStartInterval,
-                'spawn-client',
-                { slotIndex },
-            );
-        });
+        this.scheduleInitialClients();
     }
 
     makeClient(slotIndex, isAttackSource = false) {
@@ -45,14 +39,14 @@ export class LevelTwoSimulation extends TrafficSimulation {
             isAttackSource,
             disruptedUntil: 0,
             awaitingResponse: false,
+            requestSequence: 0,
             completedExchanges: 0,
         };
     }
 
     spawnClient(slotIndex) {
-        const occupied = [...this.activeClients.values()].some((client) => client.slotIndex === slotIndex,);
-
-        if (occupied) return;
+        if (this.isClientSlotOccupied(slotIndex)) return;
+        if (this.shouldSpawnAttackClient(slotIndex)) return;
 
         const client = this.makeClient(slotIndex);
         this.activeClients.set(client.id, client);
@@ -62,17 +56,8 @@ export class LevelTwoSimulation extends TrafficSimulation {
 
     removeClient(clientId, replace = true) {
         const client = this.activeClients.get(clientId);
-        if (!client || client.isAttackSource) return;
-
-        this.activeClients.delete(clientId);
-
-        // Remove packets and events belonging to the old client.
-        this.deletePackets((packet) => packet.clientId === clientId);
-        this.cancelEvents((event) => event.clientId === clientId);
-
-        if (replace) {
-            this.schedule(this.configuration.replacementDelay, 'spawn-client', {slotIndex: client.slotIndex,});
-        }
+        if (client?.isAttackSource) return null;
+        return super.removeClient(clientId, replace);
     }
 
     createAttackClient(slotIndex) {return this.makeClient(slotIndex, true);}
@@ -147,7 +132,7 @@ export class LevelTwoSimulation extends TrafficSimulation {
         return 'admitted';
     }
 
-    sendDatagram(client, isAttack = false, animate = true) {
+    sendDatagram(client, isAttack = false, animate = true, metadata = {}) {
         if (isAttack) this.attackDatagramsGenerated += 1;
 
         const outcome = this.admitDatagram(client, isAttack);
@@ -155,6 +140,7 @@ export class LevelTwoSimulation extends TrafficSimulation {
         if (outcome !== 'admitted') {
             if (animate && (outcome === 'blocked' || outcome === 'filtered' ||outcome === 'dropped')) {
                 this.spawnPacket('UDP Datagram', client, this.server, {
+                    ...metadata,
                     clientId: client.id,
                     isAttack,
                     blockedByPolicy: outcome === 'blocked',
@@ -171,7 +157,11 @@ export class LevelTwoSimulation extends TrafficSimulation {
         }   
 
         if (animate) {
-            this.spawnPacket('UDP Datagram', client, this.server, {clientId: client.id,isAttack, });
+            this.spawnPacket('UDP Datagram', client, this.server, {
+                ...metadata,
+                clientId: client.id,
+                isAttack,
+            });
         }
     }
 
@@ -179,7 +169,13 @@ export class LevelTwoSimulation extends TrafficSimulation {
         if (client.awaitingResponse) return;
 
         client.awaitingResponse = true;
-        this.sendDatagram(client, false);
+        client.requestSequence += 1;
+        const requestId = client.requestSequence;
+        this.sendDatagram(client, false, true, { requestId });
+        this.schedule(this.configuration.clientDisruptionDuration, 'request-timeout', {
+            clientId: client.id,
+            requestId,
+        });
     }
 
     sendFloodPacket(client) {
@@ -222,6 +218,7 @@ export class LevelTwoSimulation extends TrafficSimulation {
                 this.sendLegitimateDatagram(client);
             }
         } else if (event.type === 'application-response') {
+            if (!client.isAttackSource && event.requestId !== client.requestSequence) return;
             if (this.activeMitigationId === 'block-udp') return;
 
             this.applicationResponses += 1;
@@ -229,7 +226,12 @@ export class LevelTwoSimulation extends TrafficSimulation {
             this.spawnPacket('UDP Response', this.server, client, {
                 clientId: client.id,
                 isAttack: event.isAttack === true,
+                requestId: event.requestId,
             });
+        } else if (event.type === 'request-timeout') {
+            if (client.awaitingResponse && event.requestId === client.requestSequence) {
+                this.disruptClient(client);
+            }
         } else if (event.type === 'remove-client') {
                 this.removeClient(client.id);
         }
@@ -249,6 +251,7 @@ export class LevelTwoSimulation extends TrafficSimulation {
             this.schedule(this.configuration.responseDelay, 'application-response', {
                 clientId: client.id,
                 isAttack: packet.isAttack,
+                requestId: packet.requestId,
             });
 
             return;
@@ -256,8 +259,14 @@ export class LevelTwoSimulation extends TrafficSimulation {
 
         if (packet.type === 'UDP Response') {
             if (client.isAttackSource) return;
+            if (!client.awaitingResponse || packet.requestId !== client.requestSequence) return;
 
             client.awaitingResponse = false;
+            this.cancelEvents(
+                (event) => event.type === 'request-timeout'
+                    && event.clientId === client.id
+                    && event.requestId === packet.requestId,
+            );
             client.completedExchanges += 1;
             this.completedExchanges += 1;
 
